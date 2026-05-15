@@ -23,6 +23,17 @@ interface HintPanelProps {
 export function HintPanel(props: HintPanelProps) {
   if (!props.isOpen) return null;
 
+  onMount(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') props.onClose();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    onCleanup(() => {
+      window.removeEventListener('keydown', onKeyDown);
+    });
+  });
+
   return (
     <div class="modal-backdrop" role="presentation" onClick={props.onClose}>
       <section
@@ -45,3 +56,4 @@ export function HintPanel(props: HintPanelProps) {
     </div>
   );
 }
+import { onCleanup, onMount } from 'solid-js';
