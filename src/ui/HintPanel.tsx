@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from 'solid-js';
+import { createEffect, onCleanup } from 'solid-js';
 
 const guideItems = [
   'Stage 0 setup: P1 places Source in top-left zone and P2 in bottom-right zone.',
@@ -23,9 +23,9 @@ interface HintPanelProps {
 }
 
 export function HintPanel(props: HintPanelProps) {
-  if (!props.isOpen) return null;
+  createEffect(() => {
+    if (!props.isOpen) return;
 
-  onMount(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') props.onClose();
     };
@@ -35,6 +35,8 @@ export function HintPanel(props: HintPanelProps) {
       window.removeEventListener('keydown', onKeyDown);
     });
   });
+
+  if (!props.isOpen) return null;
 
   return (
     <div class="modal-backdrop" role="presentation" onClick={props.onClose}>
