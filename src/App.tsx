@@ -52,6 +52,7 @@ export function App() {
   const [state, setState] = createStore<AppState>({ ...initialState });
   const [nextBoardSize, setNextBoardSize] = createSignal<BoardSize>(DEFAULT_BOARD_SIZE);
   const [showNewGameModal, setShowNewGameModal] = createSignal(false);
+  const [showHintModal, setShowHintModal] = createSignal(false);
   let boardRef!: HTMLDivElement;
   let gameService: GameService | null = null;
 
@@ -70,6 +71,14 @@ export function App() {
 
   function cancelNewGame(): void {
     setShowNewGameModal(false);
+  }
+
+  function openHintModal(): void {
+    setShowHintModal(true);
+  }
+
+  function closeHintModal(): void {
+    setShowHintModal(false);
   }
 
   async function confirmNewGame(): Promise<void> {
@@ -107,49 +116,55 @@ export function App() {
 
   return (
     <div id="app">
-      {/* ── Board column ── */}
-      <div id="board">
-        <ErrorToast message={boardMessage(state)} />
-        <div ref={boardRef} class="board-canvas-slot" />
-      </div>
-
-      {/* ── Panel column ── */}
-      <div id="panel">
-        {/* Controls */}
-        <div class="controls">
+      <header class="top-header">
+        <div class="top-header-main">
           <TurnIndicator state={state} />
-
-          <TurnControls
-            canUndo={state.canUndo}
-            canReady={state.canReady}
-            canSurrender={state.canSurrender}
-            onUndo={() => gameService?.undoLastMove()}
-            onReady={() => gameService?.finishTurn()}
-            onSurrender={() => gameService?.surrenderCurrentPlayer()}
-            onNewGame={openNewGameModal}
-          />
-
           <ScorePanel
             scores={state.scores}
             phases={state.phases}
             currentPlayer={state.currentPlayer}
           />
-
-          <section class="card log-panel">
-            <h3>MOVES</h3>
-            <ul class="log-list">
-              {[...state.moveLog].reverse().map(entry => (
-                <li class={`log-entry ${entry.player.toLowerCase()}`}>
-                  <span class="log-dot" />
-                  <span class="log-text">{entry.label}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
         </div>
+        <button
+          type="button"
+          class="btn hint-trigger"
+          aria-label="Open game hints"
+          onClick={openHintModal}
+        >
+          <span aria-hidden="true">ⓘ</span>
+        </button>
+      </header>
 
-        <HintPanel />
+      <div id="board">
+        <ErrorToast message={boardMessage(state)} />
+        <div ref={boardRef} class="board-canvas-slot" />
       </div>
+
+      <div id="panel">
+        <TurnControls
+          canUndo={state.canUndo}
+          canReady={state.canReady}
+          canSurrender={state.canSurrender}
+          onUndo={() => gameService?.undoLastMove()}
+          onReady={() => gameService?.finishTurn()}
+          onSurrender={() => gameService?.surrenderCurrentPlayer()}
+          onNewGame={openNewGameModal}
+        />
+
+        <section class="card log-panel">
+          <h3>MOVES</h3>
+          <ul class="log-list">
+            {[...state.moveLog].reverse().map(entry => (
+              <li class={`log-entry ${entry.player.toLowerCase()}`}>
+                <span class="log-dot" />
+                <span class="log-text">{entry.label}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <HintPanel isOpen={showHintModal()} onClose={closeHintModal} />
 
       {showNewGameModal() && (
         <div class="modal-backdrop" role="presentation">

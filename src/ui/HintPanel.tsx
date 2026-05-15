@@ -15,15 +15,33 @@ const guideItems = [
   'If total turns are reached, highest score wins, then owned-node tiebreak applies.',
 ];
 
-export function HintPanel() {
+interface HintPanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function HintPanel(props: HintPanelProps) {
+  if (!props.isOpen) return null;
+
   return (
-    <section class="card guide-panel">
-      <h3>GRIDLOCK GUIDE</h3>
-      <div class="guide-scroll">
-        <ul>
-          {guideItems.map(item => <li>{item}</li>)}
-        </ul>
-      </div>
-    </section>
+    <div class="modal-backdrop" role="presentation" onClick={props.onClose}>
+      <section
+        class="modal-card hint-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-label="GridLock guide"
+        onClick={event => event.stopPropagation()}
+      >
+        <div class="hint-modal-header">
+          <h3>GRIDLOCK GUIDE</h3>
+          <button type="button" class="btn btn-light hint-close-btn" onClick={props.onClose}>Close</button>
+        </div>
+        <div class="guide-scroll">
+          <ul>
+            {guideItems.map(item => <li>{item}</li>)}
+          </ul>
+        </div>
+      </section>
+    </div>
   );
 }
