@@ -1,13 +1,24 @@
 import { createStore } from 'solid-js/store';
+import { createSignal } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
 import { GameSession } from './nexus/session/GameSession';
 import { GameService } from './services/GameService';
 import type { GameStateDetail } from './nexus/events';
 import { GAME_ERROR_EVENT, GAME_STATE_EVENT } from './nexus/events';
+import { ErrorToast } from './ui/ErrorToast';
+import { HintPanel } from './ui/HintPanel';
+import { ScorePanel } from './ui/ScorePanel';
+import { TurnControls } from './ui/TurnControls';
+import { TurnIndicator } from './ui/TurnIndicator';
 
-const COLS = 7;
-const ROWS = 7;
-const MAX_TURNS = 40;
+type BoardSize = 5 | 7 | 9;
+
+const DEFAULT_BOARD_SIZE: BoardSize = 7;
+const MAX_TURNS_BY_SIZE: Record<BoardSize, number> = {
+  5: 24,
+  7: 40,
+  9: 60,
+};
 
 interface AppState extends GameStateDetail {
   errorMessage: string | null;
@@ -16,7 +27,7 @@ interface AppState extends GameStateDetail {
 const initialState: AppState = {
   currentPlayer: 'P1',
   turnCount: 0,
-  maxTurns: MAX_TURNS,
+  maxTurns: MAX_TURNS_BY_SIZE[DEFAULT_BOARD_SIZE],
   actionableNodes: 0,
   scores: { P1: 0, P2: 0 },
   phases: { P1: 'Placement', P2: 'Placement' },
@@ -29,51 +40,59 @@ const initialState: AppState = {
   errorMessage: null,
 };
 
-function turnTitle(state: AppState): string {
-  if (state.winner === 'draw') return 'Game Over — Draw';
-  if (state.winner === 'P1') return 'Game Over — Player 1 wins';
-  if (state.winner === 'P2') return 'Game Over — Player 2 wins';
+function boardMessage(state: AppState): string {
+  if (state.errorMessage) return state.errorMessage;
   if (state.phases[state.currentPlayer] === 'Placement') {
-    return state.currentPlayer === 'P1' ? 'Player 1 — Place your Source' : 'Player 2 — Place your Source';
+    return 'Placement: P1 must start in top-left zone and P2 in bottom-right zone. Middle diagonal is forbidden.';
   }
-  return state.currentPlayer === 'P1' ? 'Player 1 turn' : 'Player 2 turn';
-}
-
-function turnClass(state: AppState): string {
-  if (state.winner) return 'turn-banner over';
-  return state.currentPlayer === 'P1' ? 'turn-banner p1' : 'turn-banner p2';
+  return 'Double-click your own straight dead-end leaf to convert it into X and retract that leaf path.';
 }
 
 export function App() {
   const [state, setState] = createStore<AppState>({ ...initialState });
+  const [nextBoardSize, setNextBoardSize] = createSignal<BoardSize>(DEFAULT_BOARD_SIZE);
+  const [showNewGameModal, setShowNewGameModal] = createSignal(false);
   let boardRef!: HTMLDivElement;
   let gameService: GameService | null = null;
-  let errorTimer: number | null = null;
 
-  async function startNewGame() {
+  async function startNewGame(size: BoardSize = nextBoardSize()) {
+    const maxTurns = MAX_TURNS_BY_SIZE[size];
     gameService?.destroy();
-    const session = new GameSession({ cols: COLS, rows: ROWS, maxTurns: MAX_TURNS });
+    const session = new GameSession({ cols: size, rows: size, maxTurns });
     gameService = new GameService(session);
     await gameService.mount(boardRef);
-    setState({ ...initialState });
+    setState({ ...initialState, maxTurns });
+  }
+
+  function openNewGameModal(): void {
+    setShowNewGameModal(true);
+  }
+
+  function cancelNewGame(): void {
+    setShowNewGameModal(false);
+  }
+
+  async function confirmNewGame(): Promise<void> {
+    await startNewGame(nextBoardSize());
+    setShowNewGameModal(false);
   }
 
   onMount(async () => {
-    const session = new GameSession({ cols: COLS, rows: ROWS, maxTurns: MAX_TURNS });
+    const initialSize = nextBoardSize();
+    const session = new GameSession({
+      cols: initialSize,
+      rows: initialSize,
+      maxTurns: MAX_TURNS_BY_SIZE[initialSize],
+    });
     gameService = new GameService(session);
     await gameService.mount(boardRef);
 
     const onState = (e: CustomEvent<GameStateDetail>) => {
-      setState({ ...e.detail, errorMessage: state.errorMessage });
+      setState({ ...e.detail, errorMessage: null });
     };
 
     const onError = (e: CustomEvent<string>) => {
       setState('errorMessage', e.detail);
-      if (errorTimer !== null) window.clearTimeout(errorTimer);
-      errorTimer = window.setTimeout(() => {
-        setState('errorMessage', null);
-        errorTimer = null;
-      }, 2500);
     };
 
     window.addEventListener(GAME_STATE_EVENT, onState);
@@ -90,115 +109,73 @@ export function App() {
     <div id="app">
       {/* ── Board column ── */}
       <div id="board">
+        <ErrorToast message={boardMessage(state)} />
         <div ref={boardRef} class="board-canvas-slot" />
-        <div class={`board-message${state.errorMessage ? ' show' : ''}`}>
-          {state.errorMessage ?? ''}
-        </div>
       </div>
 
       {/* ── Panel column ── */}
       <div id="panel">
         {/* Controls */}
         <div class="controls">
-          <section class={turnClass(state)}>
-            <strong>{turnTitle(state)}</strong>
-            <span>{state.phases[state.currentPlayer] === 'Placement'
-              ? 'Click an empty cell to place your source'
-              : `Turn ${state.turnCount} / ${state.maxTurns} · Playable nodes: ${state.actionableNodes}`}</span>
-          </section>
+          <TurnIndicator state={state} />
 
-          <section class="turn-controls">
-            <button
-              type="button"
-              class="btn btn-light"
-              disabled={!state.canUndo}
-              onClick={() => gameService?.undoLastMove()}
-            >
-              Undo Last
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary"
-              disabled={!state.canReady}
-              onClick={() => gameService?.finishTurn()}
-            >
-              Ready
-            </button>
-            {state.canSurrender && (
-              <button
-                type="button"
-                class="btn btn-danger"
-                onClick={() => gameService?.surrenderCurrentPlayer()}
-              >
-                Surrender
-              </button>
-            )}
-            {state.isGameOver && (
-              <button
-                type="button"
-                class="btn btn-new-game"
-                onClick={() => startNewGame()}
-              >
-                New Game
-              </button>
-            )}
-          </section>
+          <TurnControls
+            canUndo={state.canUndo}
+            canReady={state.canReady}
+            canSurrender={state.canSurrender}
+            onUndo={() => gameService?.undoLastMove()}
+            onReady={() => gameService?.finishTurn()}
+            onSurrender={() => gameService?.surrenderCurrentPlayer()}
+            onNewGame={openNewGameModal}
+          />
 
-          <section class="score-panel card">
-            <h3>SCORE</h3>
-            <div class="score-grid">
-              <div class="score-row p1">
-                <span class="dot" />
-                <span>{`P1: ${state.scores.P1}`}</span>
-                <span class="phase-badge">{state.phases.P1 === 'Expansion' ? 'EXP' : state.phases.P1 === 'Placement' ? 'PLC' : 'FND'}</span>
-              </div>
-              <div class="score-row p2">
-                <span class="dot" />
-                <span>{`P2: ${state.scores.P2}`}</span>
-                <span class="phase-badge">{state.phases.P2 === 'Expansion' ? 'EXP' : state.phases.P2 === 'Placement' ? 'PLC' : 'FND'}</span>
-              </div>
-            </div>
-          </section>
+          <ScorePanel
+            scores={state.scores}
+            phases={state.phases}
+            currentPlayer={state.currentPlayer}
+          />
 
-          <section class="card guide-panel">
-            <h3>GAME GUIDE</h3>
-            <ul>
-              <li>Placement: click an empty cell to place your Source node.</li>
-              <li>Source hubs can only create straight (orthogonal) vectors, length 1 or 2.</li>
-              <li>Normal: orthogonally adjacent — always available.</li>
-              <li>Diagonal: diagonally adjacent, both ends must be owned. Blocks crossing diagonals. Unlocks in Expansion (+1 bonus to origin).</li>
-              <li>Bridge (straight): distance 2 orthogonal, traps opponent node in the middle. Unlocks in Expansion.</li>
-              <li>Bridge (diagonal): distance 2 diagonal (checkers jump), traps opponent node in the middle. Unlocks in Expansion.</li>
-              <li>No vector can cross another vector.</li>
-              <li>Nodes under a length-2 Source vector are blocked and cannot be used.</li>
-              <li>Expansion phase: ≥4 owned nodes in your circuit.</li>
-              <li>Opening move is free; every subsequent move must touch your circuit.</li>
-              <li>Balanced (in=out) hubs cannot output until a new input arrives.</li>
-              <li>Relay (1-in/1-out) is transitional — 0 pts, can receive input.</li>
-              <li>Trapped (X) hubs are permanently unplayable, score 0.</li>
-              <li>Hub scores: SRC/END=1, FRK/JON=3, RCT=5. Balanced/Relay=0.</li>
-              <li>Diagonal bonus adds +1 to the origin hub.</li>
-              <li>Any owned hub that is not trapped or balanced can create outbound vectors (including END).</li>
-              <li>If a player has no legal move, they automatically lose.</li>
-              <li>You can surrender to concede the current match.</li>
-              <li>Tiebreak: more owned nodes. Still tied → draw.</li>
+          <section class="card log-panel">
+            <h3>MOVES</h3>
+            <ul class="log-list">
+              {[...state.moveLog].reverse().map(entry => (
+                <li class={`log-entry ${entry.player.toLowerCase()}`}>
+                  <span class="log-dot" />
+                  <span class="log-text">{entry.label}</span>
+                </li>
+              ))}
             </ul>
           </section>
         </div>
 
-        {/* Move log */}
-        <section class="card log-panel">
-          <h3>MOVES</h3>
-          <ul class="log-list">
-            {[...state.moveLog].reverse().map(entry => (
-              <li class={`log-entry ${entry.player.toLowerCase()}`}>
-                <span class="log-dot" />
-                <span class="log-text">{entry.label}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <HintPanel />
       </div>
+
+      {showNewGameModal() && (
+        <div class="modal-backdrop" role="presentation">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="New game settings">
+            <h3>START NEW GAME</h3>
+            <p>Choose the board size for the next match.</p>
+            <div class="size-picker-row">
+              <label for="new-game-size">Grid</label>
+              <select
+                id="new-game-size"
+                value={String(nextBoardSize())}
+                onChange={(e) => setNextBoardSize(Number(e.currentTarget.value) as BoardSize)}
+              >
+                <option value="5">5 x 5</option>
+                <option value="7">7 x 7</option>
+                <option value="9">9 x 9</option>
+              </select>
+              <span>{`Turns: ${MAX_TURNS_BY_SIZE[nextBoardSize()]}`}</span>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-light" onClick={cancelNewGame}>Cancel</button>
+              <button type="button" class="btn btn-primary" onClick={() => void confirmNewGame()}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

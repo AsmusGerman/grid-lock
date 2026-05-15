@@ -8,6 +8,7 @@ import type {
   GamePhase,
   GridCoord,
   INode,
+  MoveLogEntry,
   MoveDescriptor,
   MoveAppliedEvent,
   PlayerID,
@@ -26,6 +27,15 @@ export interface GameConfig {
 interface TurnState {
   player: PlayerID;
   moves: MoveDescriptor[];
+  leafTraps: LeafTrapAction[];
+}
+
+interface LeafTrapAction {
+  player: PlayerID;
+  coord: GridCoord;
+  from: GridCoord;
+  to: GridCoord;
+  type: ConnectionType;
 }
 
 /**
@@ -55,7 +65,7 @@ export class GameSession {
   private _peakPhase: Record<PlayerID, GamePhase> = { P1: 'Placement', P2: 'Placement' };
 
   /** Turn-based move container used for ready/undo flow. */
-  private readonly turns: TurnState[] = [{ player: 'P1', moves: [] }];
+  private readonly turns: TurnState[] = [{ player: 'P1', moves: [], leafTraps: [] }];
   private readonly movesByPlayer: Record<PlayerID, number> = { P1: 0, P2: 0 };
 
   private lastScores: Record<PlayerID, number> = { P1: 0, P2: 0 };
@@ -115,6 +125,27 @@ export class GameSession {
       return { valid: false, reason: 'You must place your source on an empty node.' };
     }
 
+    const diagonal = this.board.cols - 1;
+    const zoneValue = coord.col + coord.row;
+    if (zoneValue === diagonal) {
+      return {
+        valid: false,
+        reason: 'Source placement on the middle diagonal is forbidden during Placement.',
+      };
+    }
+    if (player === 'P1' && zoneValue > diagonal) {
+      return {
+        valid: false,
+        reason: 'Player 1 must place the source in the top-left zone during Placement.',
+      };
+    }
+    if (player === 'P2' && zoneValue < diagonal) {
+      return {
+        valid: false,
+        reason: 'Player 2 must place the source in the bottom-right zone during Placement.',
+      };
+    }
+
     // Claim the node
     node.ownedBy = player;
     node.type = NodeType.Source;
@@ -165,89 +196,126 @@ export class GameSession {
 
     let legalCount = 0;
 
-    for (let fromRow = 0; fromRow < this.board.rows; fromRow++) {
-      for (let fromCol = 0; fromCol < this.board.cols; fromCol++) {
-        const from = { col: fromCol, row: fromRow };
-
-        for (let toRow = 0; toRow < this.board.rows; toRow++) {
-          for (let toCol = 0; toCol < this.board.cols; toCol++) {
-            if (fromCol === toCol && fromRow === toRow) continue;
-
-            const to = { col: toCol, row: toRow };
-            const move: MoveDescriptor = {
-              from,
-              to,
-              connectionType: Board.inferConnectionType(from, to),
-              player,
-            };
-
-            if (requiresCircuitConnection && !this.isConnectedToCircuit(move)) {
-              continue;
-            }
-
-            const validation = this.validator.validate(
-              this.board,
-              move,
-              phase,
-              requireSourceOwnership,
-            );
-            if (validation.valid) {
-              legalCount++;
-            }
-          }
-        }
-      }
+    for (const source of this.candidateActionNodes(player)) {
+      legalCount += this.legalMoveCountFromNode(
+        source.coord,
+        player,
+        phase,
+        requiresCircuitConnection,
+        requireSourceOwnership,
+      );
     }
 
     return legalCount;
   }
 
-  /** Count how many distinct source nodes the player can act from. */
-  getActionableNodeCount(player: PlayerID): number {
+  getAvailableActionSourceCount(player: PlayerID): number {
     const phase = this.getPhase(player);
     const requiresCircuitConnection = this.movesByPlayer[player] > 0;
     const requireSourceOwnership = true;
 
     let count = 0;
 
-    for (let fromRow = 0; fromRow < this.board.rows; fromRow++) {
-      for (let fromCol = 0; fromCol < this.board.cols; fromCol++) {
-        const from = { col: fromCol, row: fromRow };
-        let hasMove = false;
+    for (const source of this.candidateActionNodes(player)) {
+      if (this.canLeafTrapFromNode(source, player)) {
+        count++;
+        continue;
+      }
 
-        for (let toRow = 0; toRow < this.board.rows && !hasMove; toRow++) {
-          for (let toCol = 0; toCol < this.board.cols && !hasMove; toCol++) {
-            if (fromCol === toCol && fromRow === toRow) continue;
-
-            const to = { col: toCol, row: toRow };
-            const move: MoveDescriptor = {
-              from,
-              to,
-              connectionType: Board.inferConnectionType(from, to),
-              player,
-            };
-
-            if (requiresCircuitConnection && !this.isConnectedToCircuit(move)) {
-              continue;
-            }
-
-            const validation = this.validator.validate(
-              this.board,
-              move,
-              phase,
-              requireSourceOwnership,
-            );
-            if (validation.valid) {
-              hasMove = true;
-            }
-          }
-        }
-
-        if (hasMove) count++;
+      if (
+        this.hasAnyLegalMoveFromNode(
+          source.coord,
+          player,
+          phase,
+          requiresCircuitConnection,
+          requireSourceOwnership,
+        )
+      ) {
+        count++;
       }
     }
 
     return count;
+  }
+
+  /** Count how many distinct source nodes the player can act from. */
+  getActionableNodeCount(player: PlayerID): number {
+    return this.getAvailableActionSourceCount(player);
+  }
+
+  /**
+   * Special rule: double-clicking an owned dead-end fed by a straight
+   * connection retracts that leaf and marks it as trapped (X).
+   */
+  trapLeafNode(coord: GridCoord, player: PlayerID): ValidationResult {
+    if (this.isGameOver) {
+      return { valid: false, reason: 'The game is over.' };
+    }
+    if (this.isPlacementPhase) {
+      return { valid: false, reason: 'Leaf trap is only available after Placement.' };
+    }
+    if (player !== this._currentPlayer) {
+      return { valid: false, reason: 'It is not this player\'s turn.' };
+    }
+    if (!this.canPlayMove()) {
+      return { valid: false, reason: 'Only one action per turn is allowed. Press Ready or Undo.' };
+    }
+    if (!this.board.inBounds(coord)) {
+      return { valid: false, reason: 'Node is out of bounds.' };
+    }
+
+    const node = this.board.getNode(coord);
+    if (node.ownedBy !== player) {
+      return { valid: false, reason: 'You can only trap your own dead-end leaf.' };
+    }
+    if (node.isTrapped) {
+      return { valid: false, reason: 'This node is already trapped.' };
+    }
+    if (node.type !== NodeType.DeadEnd) {
+      return { valid: false, reason: 'Only dead-end leaf nodes can be trapped by double-click.' };
+    }
+    if (node.outConnections.length !== 0 || node.inConnections.length !== 1) {
+      return { valid: false, reason: 'This node is not a single-leaf endpoint.' };
+    }
+
+    const incoming = node.inConnections[0];
+    if (incoming.type !== ConnectionType.Normal) {
+      return { valid: false, reason: 'Leaf trap only works on straight (normal) leaf connections.' };
+    }
+
+    const removed = this.board.removeConnection(incoming.from, incoming.to);
+    if (!removed) {
+      return { valid: false, reason: 'Could not retract the leaf connection.' };
+    }
+
+    node.isTrapped = true;
+    node.isOutBlocked = true;
+    node.isBalanced = false;
+    node.isPassthrough = false;
+    node.inConnections = [];
+    node.outConnections = [];
+
+    const fromNode = this.board.getNode(removed.from);
+    this.updateNodeOwnershipByVectors(fromNode);
+    fromNode.type = classifyNode(fromNode);
+
+    this.recomputeOutboundBlocks();
+
+    this.activeTurn().leafTraps.push({
+      player,
+      coord,
+      from: removed.from,
+      to: removed.to,
+      type: removed.type,
+    });
+
+    const opponent: PlayerID = player === 'P1' ? 'P2' : 'P1';
+    if (!this.hasAnyLegalMove(opponent)) {
+      this.endByNoMoves();
+    }
+
+    this.lastScores = this.scoring.compute(this.board);
+    return { valid: true };
   }
 
   /**
@@ -279,17 +347,17 @@ export class GameSession {
   canPlayMove(): boolean {
     if (this.isGameOver) return false;
     if (this.isPlacementPhase) return false;
-    return this.activeTurn().moves.length === 0;
+    return this.actionCount(this.activeTurn()) === 0;
   }
 
   canFinishTurn(): boolean {
     if (this.isGameOver) return false;
-    return this.activeTurn().moves.length === 1;
+    return this.actionCount(this.activeTurn()) === 1;
   }
 
   canUndo(): boolean {
     if (this.isGameOver) return false;
-    return this.activeTurn().moves.length > 0;
+    return this.actionCount(this.activeTurn()) > 0;
   }
 
   // ─── Move entry point ────────────────────────────────────────────────────────
@@ -376,7 +444,7 @@ export class GameSession {
 
     if (!this.isGameOver) {
       this._currentPlayer = this._currentPlayer === 'P1' ? 'P2' : 'P1';
-      this.turns.push({ player: this._currentPlayer, moves: [] });
+      this.turns.push({ player: this._currentPlayer, moves: [], leafTraps: [] });
 
       // If the incoming player has no legal move, the match ends immediately.
       if (!this.hasAnyLegalMove(this._currentPlayer)) {
@@ -390,11 +458,15 @@ export class GameSession {
 
   undoLastMove(): boolean {
     const turn = this.activeTurn();
-    if (!turn || turn.moves.length === 0) {
+    if (!turn || this.actionCount(turn) === 0) {
       return false;
     }
 
-    turn.moves.pop();
+    if (turn.leafTraps.length > 0) {
+      turn.leafTraps.pop();
+    } else {
+      turn.moves.pop();
+    }
     this.rebuildFromTurns();
     return true;
   }
@@ -406,6 +478,32 @@ export class GameSession {
   /** Flattened chronological move history used by the UI move log. */
   getMoveHistory(): MoveDescriptor[] {
     return this.turns.flatMap(turn => turn.moves);
+  }
+
+  /** Flattened chronological action history (moves + leaf traps) for UI logging. */
+  getActionHistory(): MoveLogEntry[] {
+    const history: MoveLogEntry[] = [];
+    let index = 1;
+
+    for (const turn of this.turns) {
+      for (const move of turn.moves) {
+        history.push({
+          player: move.player,
+          label: `#${index} ${move.player} ${this.coordLabel(move.from)} -> ${this.coordLabel(move.to)} (${this.connLabel(move.connectionType)})`,
+        });
+        index++;
+      }
+
+      for (const trap of turn.leafTraps) {
+        history.push({
+          player: trap.player,
+          label: `#${index} ${trap.player} ${this.coordLabel(trap.coord)} x2 -> X (Leaf Trap)`,
+        });
+        index++;
+      }
+    }
+
+    return history;
   }
 
   // ─── Event subscription ──────────────────────────────────────────────────────
@@ -468,6 +566,15 @@ export class GameSession {
   }
 
   private applyConnectionToBoard(move: MoveDescriptor): { connection: Connection; affectedNodes: INode[] } {
+    // Special bridge reversal: if opposite edge exists between same endpoints,
+    // replace it with this new bridge direction.
+    if (
+      move.connectionType === ConnectionType.Bridge &&
+      this.board.hasReverseConnection(move.from, move.to)
+    ) {
+      this.board.removeConnection(move.to, move.from);
+    }
+
     const connection = new Connection(move.from, move.to, move.connectionType, move.player);
     this.board.addConnection(connection);
 
@@ -537,6 +644,9 @@ export class GameSession {
         this.applyConnectionToBoard(move);
         this.movesByPlayer[move.player]++;
       }
+      for (const trap of turn.leafTraps) {
+        this.applyLeafTrapToBoard(trap);
+      }
     }
 
     this.recomputeOutboundBlocks();
@@ -554,6 +664,38 @@ export class GameSession {
     return this.turns[this.turns.length - 1];
   }
 
+  private actionCount(turn: TurnState): number {
+    return turn.moves.length + turn.leafTraps.length;
+  }
+
+  private applyLeafTrapToBoard(action: LeafTrapAction): void {
+    const removed = this.board.removeConnection(action.from, action.to);
+    if (!removed) return;
+
+    const node = this.board.getNode(action.coord);
+    node.isTrapped = true;
+    node.isOutBlocked = true;
+    node.isBalanced = false;
+    node.isPassthrough = false;
+    node.inConnections = [];
+    node.outConnections = [];
+
+    const fromNode = this.board.getNode(action.from);
+    this.updateNodeOwnershipByVectors(fromNode);
+    fromNode.type = classifyNode(fromNode);
+  }
+
+  private coordLabel(coord: GridCoord): string {
+    return `${String.fromCharCode(65 + coord.col)}${coord.row + 1}`;
+  }
+
+  private connLabel(type: ConnectionType): string {
+    if (type === ConnectionType.Diagonal) return 'D';
+    if (type === ConnectionType.Bridge) return 'B';
+    if (type === ConnectionType.DiagonalBridge) return 'DB';
+    return 'N';
+  }
+
   private isConnectedToCircuit(move: MoveDescriptor): boolean {
     const fromNode = this.board.getNode(move.from);
     const toNode = this.board.getNode(move.to);
@@ -562,7 +704,81 @@ export class GameSession {
   }
 
   private hasAnyLegalMove(player: PlayerID): boolean {
-    return this.getLegalMoveCount(player) > 0;
+    return this.getAvailableActionSourceCount(player) > 0;
+  }
+
+  private candidateActionNodes(player: PlayerID): INode[] {
+    return this.board.allNodes().filter(node => {
+      if (node.ownedBy !== player) return false;
+      if (node.isTrapped || node.isPassthrough || node.isOutBlocked || node.isBalanced) return false;
+      if (node.type === NodeType.Empty || node.type === NodeType.Relay) return false;
+      return true;
+    });
+  }
+
+  private legalMoveCountFromNode(
+    from: GridCoord,
+    player: PlayerID,
+    phase: GamePhase,
+    requiresCircuitConnection: boolean,
+    requireSourceOwnership: boolean,
+  ): number {
+    let legalCount = 0;
+
+    for (let toRow = 0; toRow < this.board.rows; toRow++) {
+      for (let toCol = 0; toCol < this.board.cols; toCol++) {
+        if (from.col === toCol && from.row === toRow) continue;
+
+        const to = { col: toCol, row: toRow };
+        const move: MoveDescriptor = {
+          from,
+          to,
+          connectionType: Board.inferConnectionType(from, to),
+          player,
+        };
+
+        if (requiresCircuitConnection && !this.isConnectedToCircuit(move)) {
+          continue;
+        }
+
+        const validation = this.validator.validate(
+          this.board,
+          move,
+          phase,
+          requireSourceOwnership,
+        );
+        if (validation.valid) {
+          legalCount++;
+        }
+      }
+    }
+
+    return legalCount;
+  }
+
+  private hasAnyLegalMoveFromNode(
+    from: GridCoord,
+    player: PlayerID,
+    phase: GamePhase,
+    requiresCircuitConnection: boolean,
+    requireSourceOwnership: boolean,
+  ): boolean {
+    return this.legalMoveCountFromNode(
+      from,
+      player,
+      phase,
+      requiresCircuitConnection,
+      requireSourceOwnership,
+    ) > 0;
+  }
+
+  private canLeafTrapFromNode(node: INode, player: PlayerID): boolean {
+    if (this.isPlacementPhase || this.isGameOver) return false;
+    if (node.ownedBy !== player) return false;
+    if (node.isTrapped) return false;
+    if (node.type !== NodeType.DeadEnd) return false;
+    if (node.outConnections.length !== 0 || node.inConnections.length !== 1) return false;
+    return node.inConnections[0].type === ConnectionType.Normal;
   }
 
   /** End the game because a player has no legal moves. Winner decided by score. */

@@ -1,6 +1,6 @@
-# NEXUS
+# GridLock
 
-NEXUS is a 2-player, turn-based abstract strategy game played on a grid of hubs (nodes) connected by directed vectors (arrows).
+GridLock is a 2-player, turn-based abstract strategy game played on a grid of hubs (nodes) connected by directed vectors (arrows).
 
 This README describes the **implemented rules** in this project.
 
@@ -12,9 +12,9 @@ npm run dev
 ```
 
 Default configuration in this build:
-- Board size: 7 x 7
+- Board size: 7 x 7 (new matches can use 5 x 5, 7 x 7, or 9 x 9)
 - Players: P1 and P2
-- Match length: 40 turns total
+- Match length: size-scaled (5 x 5 = 24, 7 x 7 = 40, 9 x 9 = 60)
 
 ## Objective
 

@@ -1,13 +1,12 @@
-import { Application, Container } from 'pixi.js';
+import { Application, Container, Graphics } from 'pixi.js';
 import { GameSession } from '../nexus/session/GameSession';
 import { Board } from '../nexus/board/Board';
 import { BoardRenderer } from '../rendering/BoardRenderer';
 import { NodeRenderer } from '../rendering/NodeRenderer';
 import { ConnectionRenderer } from '../rendering/ConnectionRenderer';
 import { HoverRenderer } from '../rendering/HoverRenderer';
-import { THEME } from '../rendering/theme';
+import { CELL_SIZE, THEME, gridToPixel } from '../rendering/theme';
 import type { GridCoord, INode, MoveDescriptor, MoveLogEntry } from '../nexus/types';
-import { ConnectionType } from '../nexus/types';
 import { GAME_ERROR_EVENT, GAME_STATE_EVENT, type GameStateDetail } from '../nexus/events';
 
 /**
@@ -16,6 +15,7 @@ import { GAME_ERROR_EVENT, GAME_STATE_EVENT, type GameStateDetail } from '../nex
  */
 export class GameService {
   private readonly boardLayer: Container;
+  private readonly placementLayer: Graphics;
   private readonly connectionLayer: Container;
   private readonly nodeLayer: Container;
   private readonly previewLayer: Container;
@@ -30,6 +30,7 @@ export class GameService {
   constructor(session: GameSession) {
     this.session = session;
     this.boardLayer = new Container();
+    this.placementLayer = new Graphics();
     this.connectionLayer = new Container();
     this.nodeLayer = new Container();
     this.previewLayer = new Container();
@@ -48,6 +49,7 @@ export class GameService {
     // Static grid background
     const boardRenderer = new BoardRenderer(cols, rows);
     this.boardLayer.addChild(boardRenderer.displayObject);
+    this.boardLayer.addChild(this.placementLayer);
 
     // Node renderers
     for (const node of this.session.board.allNodes()) {
@@ -57,7 +59,7 @@ export class GameService {
 
       nr.container.on('pointerover', () => this.onNodeHover(node));
       nr.container.on('pointerout', () => this.onNodeHoverOut(node));
-      nr.container.on('pointertap', () => this.onNodeClick(node));
+      nr.container.on('pointertap', (event) => this.onNodeClick(node, event.detail ?? 1));
     }
   }
 
@@ -172,7 +174,7 @@ export class GameService {
     this.hoverRenderer.clear();
   }
 
-  private onNodeClick(node: INode): void {
+  private onNodeClick(node: INode, tapCount = 1): void {
     if (this.session.isGameOver) return;
 
     // ─── Placement phase: single-click to place source ───
@@ -184,6 +186,10 @@ export class GameService {
       }
       this.rendererFor(node.coord)?.redraw();
       this.dispatchState();
+      return;
+    }
+
+    if (tapCount >= 2 && this.tryLeafTrap(node)) {
       return;
     }
 
@@ -251,10 +257,12 @@ export class GameService {
     if (
       !this.session.isGameOver &&
       this.session.canPlayMove() &&
-      this.session.getLegalMoveCount(this.session.currentPlayer) === 0
+      this.session.getAvailableActionSourceCount(this.session.currentPlayer) === 0
     ) {
       this.session.endByNoMoves();
     }
+
+    this.redrawPlacementOverlay();
 
     window.dispatchEvent(
       new CustomEvent(GAME_STATE_EVENT, { detail: this.buildStateDetail() }),
@@ -288,21 +296,7 @@ export class GameService {
   }
 
   private formatMoveLog(): MoveLogEntry[] {
-    return this.session.getMoveHistory().map((move, index) => ({
-      player: move.player,
-      label: `#${index + 1} ${move.player} ${this.coordLabel(move.from)} → ${this.coordLabel(move.to)} (${this.connLabel(move.connectionType)})`,
-    }));
-  }
-
-  private coordLabel(coord: GridCoord): string {
-    return `${String.fromCharCode(65 + coord.col)}${coord.row + 1}`;
-  }
-
-  private connLabel(type: string): string {
-    if (type === ConnectionType.Diagonal) return 'D';
-    if (type === ConnectionType.Bridge) return 'B';
-    if (type === ConnectionType.DiagonalBridge) return 'DB';
-    return 'N';
+    return this.session.getActionHistory();
   }
 
   private rendererFor(coord: GridCoord): NodeRenderer | undefined {
@@ -322,6 +316,53 @@ export class GameService {
     for (const connection of this.session.board.getConnections()) {
       const connRenderer = new ConnectionRenderer(connection);
       this.connectionLayer.addChild(connRenderer.gfx);
+    }
+  }
+
+  private tryLeafTrap(node: INode): boolean {
+    const result = this.session.trapLeafNode(node.coord, this.session.currentPlayer);
+    if (!result.valid) {
+      this.dispatchError(result.reason ?? 'Leaf trap is not valid here.');
+      return false;
+    }
+
+    this.hoverRenderer.clear();
+    if (this.selectedCoord) {
+      this.rendererFor(this.selectedCoord)?.setSelected(false);
+      this.selectedCoord = null;
+    }
+
+    this.redrawConnectionsFromBoard();
+    for (const currentNode of this.session.board.allNodes()) {
+      this.rendererFor(currentNode.coord)?.redraw();
+    }
+    this.dispatchState();
+    return true;
+  }
+
+  private redrawPlacementOverlay(): void {
+    this.placementLayer.clear();
+
+    if (!this.session.isPlacementPhase) return;
+
+    const diagonal = this.session.board.cols - 1;
+    const activeP1Zone = this.session.currentPlayer === 'P1';
+    const tile = CELL_SIZE * 0.86;
+    const half = tile / 2;
+
+    for (const node of this.session.board.allNodes()) {
+      const zone = node.coord.col + node.coord.row;
+      if (zone === diagonal) continue;
+
+      const p1Zone = zone < diagonal;
+      const color = p1Zone ? THEME.P1 : THEME.P2;
+      const alpha = p1Zone === activeP1Zone ? 0.22 : 0.1;
+      const { x, y } = gridToPixel(node.coord.col, node.coord.row);
+
+      this.placementLayer
+        .setFillStyle({ color, alpha })
+        .rect(x - half, y - half, tile, tile)
+        .fill();
     }
   }
 

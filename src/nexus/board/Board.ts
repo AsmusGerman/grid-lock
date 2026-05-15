@@ -75,6 +75,23 @@ export class Board {
     toNode.inConnections.push(connection);
   }
 
+  /** Removes a connection and unwires both endpoint nodes. */
+  removeConnection(from: GridCoord, to: GridCoord): Connection | null {
+    const id = Connection.makeId(from, to);
+    const existing = this.connections.get(id);
+    if (!existing) return null;
+
+    this.connections.delete(id);
+
+    const fromNode = this.getNode(from);
+    const toNode = this.getNode(to);
+
+    fromNode.outConnections = fromNode.outConnections.filter(c => c.id !== id);
+    toNode.inConnections = toNode.inConnections.filter(c => c.id !== id);
+
+    return existing;
+  }
+
   /** Clears all topology and restores every node to an empty state. */
   reset(): void {
     this.connections.clear();

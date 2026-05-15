@@ -1,8 +1,8 @@
-# NEXUS — Reglas v2
+# GridLock — Reglas v2
 
 ## Visión general
 
-NEXUS es un juego de estrategia abstracta por turnos para 2 jugadores en un tablero de 7×7. Los jugadores construyen redes dirigidas de nodos para maximizar su puntuación. Diseñado para jugadores con perfil Go/ajedrez: cada movimiento tiene peso, las amenazas son diferidas, y ningún estilo de juego domina.
+GridLock es un juego de estrategia abstracta por turnos para 2 jugadores en un tablero cuadrado configurable (5×5, 7×7 o 9×9). Los jugadores construyen redes dirigidas de nodos para maximizar su puntuación. Diseñado para jugadores con perfil Go/ajedrez: cada movimiento tiene peso, las amenazas son diferidas, y ningun estilo de juego domina.
 
 ---
 
@@ -14,7 +14,7 @@ Construir y controlar una red de nodos conectados mientras se bloquea y disrumpe
 
 ## El tablero y los nodos
 
-- El área de juego es una **cuadrícula 7×7** de nodos (celdas).
+- El área de juego es una **cuadricula cuadrada** de nodos (5×5, 7×7 o 9×9).
 - Cada nodo empieza **vacío** (sin propietario, sin conexiones).
 - Un nodo pasa a ser **propio** en el momento en que una conexión lo convierte de vacío a cualquier tipo de hub.
 - La **propiedad es permanente** una vez adquirida.
@@ -111,7 +111,7 @@ Las fases no se determinan por turno global, sino por el **tamaño del circuito 
 
 Un movimiento es legal si y solo si:
 
-1. **Regla de apertura:** el **primer movimiento** de cada jugador puede colocarse libremente en cualquier nodo vacío.
+1. **Regla de apertura:** en fase de colocacion inicial, **J1 debe ubicar su source en la zona superior-izquierda y J2 en la zona inferior-derecha**. La diagonal central esta prohibida para ambos.
 2. **Regla de circuito:** a partir del segundo movimiento, toda conexión debe estar **adyacente al circuito propio existente**.
 3. **Verificación del nodo origen:** el nodo origen no puede ser:
    - Atrapado (X).
@@ -165,7 +165,7 @@ Los nodos marcados con X están eliminados permanentemente:
 
 La partida termina cuando:
 - Un jugador **no tiene movimientos legales** disponibles.
-- O se alcanza el **límite de 40 turnos totales**.
+- O se alcanza el **limite de turnos segun tamaño** (5×5=24, 7×7=40, 9×9=60).
 
 Cuando quedan pocas celdas libres adyacentes a cualquier circuito, la interfaz muestra una **señal de fase final** para que ambos jugadores puedan planificar el cierre.
 
@@ -176,7 +176,7 @@ Cuando quedan pocas celdas libres adyacentes a cualquier circuito, la interfaz m
 ## Secuencia de ejemplo
 
 1. **J1 (T1):** Coloca conexión Normal de (3,3) a (3,4). Nodo (3,3) = SRC. Nodo (3,4) = END. Ambos de J1. Circuito J1: 2 nodos → fase Fundación.
-2. **J2 (T1):** Apertura libre en (1,1). Coloca Normal a (1,2). Circuito J2: 2 nodos → fase Fundación.
+2. **J2 (T1):** Coloca su source en su zona valida y juega Normal a un nodo adyacente. Circuito J2: 2 nodos → fase Fundacion.
 3. **J1 (T2):** Normal de (3,4) a (2,4). Circuito J1: 3 nodos → fase Fundación.
 4. **J2 (T2):** Normal de (1,2) a (2,2). Circuito J2: 3 nodos → fase Fundación.
 5. **J1 (T3):** Normal de (2,4) a (2,3). Circuito J1: 4 nodos → **entra en fase Expansión**.

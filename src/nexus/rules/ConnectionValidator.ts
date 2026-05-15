@@ -4,7 +4,7 @@ import { nodeTypeScore } from './HubClassifier';
 import type { GamePhase, GridCoord, INode, MoveDescriptor, ValidationResult } from '../types';
 
 /**
- * Stateless validator that checks all NEXUS move rules.
+ * Stateless validator that checks all GridLock move rules.
  * Each method returns a ValidationResult so callers can surface messages.
  */
 export class ConnectionValidator {
@@ -109,6 +109,12 @@ export class ConnectionValidator {
         reason: 'Balanced nodes cannot create outbound vectors until they receive a new input.',
       };
     }
+    if (source.type === NodeType.Relay) {
+      return {
+        valid: false,
+        reason: 'Relay (0-point) nodes cannot create outbound vectors; they must receive a new input first.',
+      };
+    }
     return { valid: true };
   }
 
@@ -196,9 +202,19 @@ export class ConnectionValidator {
 
   private checkNoReverseExists(board: Board, move: MoveDescriptor): ValidationResult {
     if (board.hasReverseConnection(move.from, move.to)) {
+      if (this.canReverseWithStraightBridge(board, move)) {
+        return { valid: true };
+      }
       return { valid: false, reason: 'An opposite-direction connection already exists between these nodes.' };
     }
     return { valid: true };
+  }
+
+  private canReverseWithStraightBridge(board: Board, move: MoveDescriptor): boolean {
+    if (move.connectionType !== ConnectionType.Bridge) return false;
+    const fromNode = board.getNode(move.from);
+    const toNode = board.getNode(move.to);
+    return fromNode.ownedBy === move.player && toNode.ownedBy === move.player;
   }
 
   private checkNoDuplicate(board: Board, move: MoveDescriptor): ValidationResult {
