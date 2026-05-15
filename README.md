@@ -159,3 +159,11 @@ Then:
 - TypeScript + Vite
 - SolidJS for page UI (controls, turn info, hints)
 - PixiJS for gameplay board rendering
+
+## GitHub Pages
+
+This repository includes a GitHub Actions workflow that builds and deploys the static site to GitHub Pages on every push to `master`.
+
+After enabling Pages in repository settings (`Build and deployment` -> `Source: GitHub Actions`), the game is published at:
+
+- `https://asmusgerman.github.io/grid-lock/`
