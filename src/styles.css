@@ -1,0 +1,341 @@
+:root {
+  --bg: #f5f3ee;
+  --panel: #fbf9f4;
+  --line: #d8d5cc;
+  --ink: #333330;
+  --muted: #6a665f;
+  --p1: #2d6a9f;
+  --p2: #c0392b;
+  --over: #444440;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: radial-gradient(circle at 15% 15%, #fffdf9, var(--bg) 48%);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: var(--ink);
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: auto 720px;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  padding: 20px;
+  align-content: center;
+}
+
+#board {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 14px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(45, 44, 41, 0.08);
+  overflow: hidden;
+}
+
+.board-canvas-slot {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#board canvas {
+  display: block;
+  margin: 0 auto;
+}
+
+#panel {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  min-width: 0;
+  height: 100%;
+  align-self: stretch;
+}
+
+#panel>* {
+  flex: 1;
+}
+
+/* ─── Controls column ────────────────────────────────────────────────── */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.turn-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 10px;
+  color: #ffffff;
+  padding: 12px 14px;
+}
+
+.turn-banner strong {
+  font-size: 14px;
+  letter-spacing: 0.4px;
+}
+
+.turn-banner span {
+  font-size: 12px;
+  opacity: 0.84;
+}
+
+.turn-banner.p1 {
+  background: var(--p1);
+}
+
+.turn-banner.p2 {
+  background: var(--p2);
+}
+
+.turn-banner.over {
+  background: var(--over);
+}
+
+.turn-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.turn-controls .btn {
+  flex: 1 1 0;
+  min-width: 80px;
+}
+
+.btn {
+  border-radius: 9px;
+  border: 1px solid #c8c5bc;
+  height: 40px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn-light {
+  background: #e8e5de;
+  color: #333330;
+}
+
+.btn-primary {
+  background: var(--p1);
+  color: #ffffff;
+  border-color: #2c5f8b;
+}
+
+.btn-danger {
+  background: var(--p2);
+  color: #ffffff;
+  border-color: #9f2f24;
+}
+
+.btn-new-game {
+  background: #2ecc71;
+  color: #ffffff;
+  border-color: #27ae60;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.card h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 14px;
+  gap: 10px;
+}
+
+.score-row {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 15px;
+  gap: 9px;
+}
+
+.score-row .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+}
+
+.score-row.p1 {
+  color: var(--p1);
+}
+
+.score-row.p1 .dot {
+  background: var(--p1);
+}
+
+.score-row.p2 {
+  color: var(--p2);
+}
+
+.score-row.p2 .dot {
+  background: var(--p2);
+}
+
+.phase-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  opacity: 0.75;
+}
+
+.guide-panel ul {
+  margin: 12px 0 0;
+  padding: 0 0 0 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #4b4944;
+}
+
+.guide-panel li {
+  margin-bottom: 6px;
+}
+
+/* ─── Log panel ──────────────────────────────────────────────────────── */
+
+.log-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.log-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.log-entry.p1 {
+  color: var(--p1);
+  justify-content: flex-start;
+}
+
+.log-entry.p2 {
+  color: var(--p2);
+  flex-direction: row-reverse;
+}
+
+.log-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.log-entry.p1 .log-dot {
+  background: var(--p1);
+}
+
+.log-entry.p2 .log-dot {
+  background: var(--p2);
+}
+
+/* ─── Status toast ───────────────────────────────────────────────────── */
+
+/* ─── Board message (error/info area below canvas) ──────────────────── */
+
+.board-message {
+  width: 100%;
+  min-height: 38px;
+  border-radius: 0 0 12px 12px;
+  background: rgba(34, 34, 32, 0.85);
+  color: #f5f3ee;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+.board-message.show {
+  opacity: 1;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 1200px) {
+  #app {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100%;
+    justify-items: center;
+  }
+
+  #panel {
+    width: min(720px, 92vw);
+    height: auto;
+    align-self: auto;
+  }
+
+  .log-panel {
+    max-height: 260px;
+  }
+}
