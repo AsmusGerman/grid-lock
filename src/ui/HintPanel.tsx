@@ -1,3 +1,5 @@
+import { onCleanup, onMount } from 'solid-js';
+
 const guideItems = [
   'Stage 0 setup: P1 places Source in top-left zone and P2 in bottom-right zone.',
   'The middle diagonal is neutral and forbidden for source placement by both players.',
@@ -56,4 +58,3 @@ export function HintPanel(props: HintPanelProps) {
     </div>
   );
 }
-import { onCleanup, onMount } from 'solid-js';

@@ -8,6 +8,7 @@
   --p2: #c0392b;
   --over: #444440;
   --board-slot-size: min(74vh, 680px);
+  --hint-scroll-size: min(58vh, 520px);
 }
 
 * {
@@ -363,7 +364,7 @@ body {
 .guide-scroll {
   margin-top: 6px;
   min-height: 0;
-  max-height: min(58vh, 520px);
+  max-height: var(--hint-scroll-size);
   overflow-y: auto;
 }
 
