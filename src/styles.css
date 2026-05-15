@@ -9,6 +9,7 @@
   --over: #444440;
   --board-slot-size: min(74vh, 680px);
   --hint-scroll-size: min(58vh, 520px);
+  --hint-scroll-size-dynamic: min(58dvh, 520px);
 }
 
 * {
@@ -540,6 +541,10 @@ body {
 
 @supports (height: 100dvh) {
   @media (max-width: 1200px) {
+    .guide-scroll {
+      max-height: var(--hint-scroll-size-dynamic);
+    }
+
     .modal-card {
       max-height: calc(100dvh - 32px);
     }

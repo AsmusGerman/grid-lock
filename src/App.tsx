@@ -54,6 +54,7 @@ export function App() {
   const [showNewGameModal, setShowNewGameModal] = createSignal(false);
   const [showHintModal, setShowHintModal] = createSignal(false);
   let boardRef!: HTMLDivElement;
+  let hintTriggerRef!: HTMLButtonElement;
   let gameService: GameService | null = null;
 
   async function startNewGame(size: BoardSize = nextBoardSize()) {
@@ -126,6 +127,7 @@ export function App() {
           />
         </div>
         <button
+          ref={hintTriggerRef}
           type="button"
           class="btn hint-trigger"
           aria-label="Open game hints"
@@ -164,7 +166,7 @@ export function App() {
         </section>
       </div>
 
-      <HintPanel isOpen={showHintModal()} onClose={closeHintModal} />
+      <HintPanel isOpen={showHintModal()} onClose={closeHintModal} triggerEl={hintTriggerRef} />
 
       {showNewGameModal() && (
         <div class="modal-backdrop" role="presentation">

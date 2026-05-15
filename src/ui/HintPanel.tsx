@@ -20,9 +20,12 @@ const guideItems = [
 interface HintPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  triggerEl?: HTMLButtonElement;
 }
 
 export function HintPanel(props: HintPanelProps) {
+  let modalRef!: HTMLElement;
+
   createEffect(() => {
     if (!props.isOpen) return;
 
@@ -31,8 +34,13 @@ export function HintPanel(props: HintPanelProps) {
     };
 
     window.addEventListener('keydown', onKeyDown);
+    queueMicrotask(() => {
+      modalRef?.focus();
+    });
+
     onCleanup(() => {
       window.removeEventListener('keydown', onKeyDown);
+      props.triggerEl?.focus();
     });
   });
 
@@ -41,10 +49,12 @@ export function HintPanel(props: HintPanelProps) {
   return (
     <div class="modal-backdrop" role="presentation" onClick={props.onClose}>
       <section
+        ref={modalRef}
         class="modal-card hint-modal-card"
         role="dialog"
         aria-modal="true"
         aria-label="GridLock guide"
+        tabindex={-1}
         onClick={event => event.stopPropagation()}
       >
         <div class="hint-modal-header">
