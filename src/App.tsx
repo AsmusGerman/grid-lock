@@ -45,14 +45,6 @@ const initialState: AppState = {
   errorMessage: null,
 };
 
-function boardMessage(state: AppState): string {
-  if (state.errorMessage) return state.errorMessage;
-  if (state.phases[state.currentPlayer] === 'Placement') {
-    return uiText.boardMessages.placement;
-  }
-  return uiText.boardMessages.default;
-}
-
 function boardMessageFromDetail(detail: GameStateDetail): string {
   if (detail.phases[detail.currentPlayer] === 'Placement') {
     return uiText.boardMessages.placement;
@@ -166,7 +158,7 @@ export function App() {
       />
 
       <div class="hint-toast-slot">
-        <HintToast message={hintToastMessage() ?? boardMessage(state)} />
+        <HintToast message={hintToastMessage()} />
       </div>
 
       <div id="content">

@@ -41,7 +41,7 @@
   --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 6px 16px rgba(15, 23, 42, 0.08);
 
-  --bottom-bar-h: 72px;
+  --bottom-bar-h: 64px;
   --title-bar-h: 56px;
   --board-mobile-size: 418px;
   --board-desktop-size: 600px;
@@ -229,9 +229,9 @@ body {
   height: 100%;
   border-radius: 0;
   border: none;
-  font-size: var(--font-sm);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.2px;
 }
 
 .bottom-bar .btn {
@@ -344,12 +344,12 @@ body {
 }
 
 .icon-btn .icon {
-  font-size: var(--font-lg);
+  font-size: 16px;
   line-height: 1;
 }
 
 .icon-btn .label {
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
 }
 
@@ -538,14 +538,17 @@ body {
 /* ─── Hint toast ─────────────────────────────────────────────────────────── */
 
 .hint-toast-slot {
-  padding: var(--space-sm) var(--space-md) 0;
-  padding-left: calc(var(--space-md) + var(--safe-left));
-  padding-right: calc(var(--space-md) + var(--safe-right));
+  position: fixed;
+  top: calc(var(--title-bar-h) + var(--space-sm));
+  left: calc(var(--space-md) + var(--safe-left));
+  right: calc(var(--space-md) + var(--safe-right));
+  z-index: 25;
+  pointer-events: none;
 }
 
 .hint-toast {
   width: 100%;
-  min-height: 42px;
+  min-height: 40px;
   background: rgba(61, 64, 91, 0.94);
   color: var(--eggshell);
   display: flex;
@@ -555,6 +558,14 @@ body {
   padding: var(--space-sm) var(--space-md);
   font-size: var(--font-sm);
   font-weight: 600;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.hint-toast.is-visible {
+  opacity: 0.94;
+  transform: translateY(0);
 }
 
 /* ─── Modals ─────────────────────────────────────────────────────────────── */
@@ -731,7 +742,9 @@ body {
   }
 
   .hint-toast-slot {
-    padding: var(--space-sm) 24px 0;
+    top: calc(60px + var(--space-sm));
+    left: 24px;
+    right: 24px;
   }
 
   /* Reset mobile ordering */

@@ -36,8 +36,7 @@ export class NodeRenderer {
     this.container.x = x;
     this.container.y = y;
 
-    this.container.eventMode = 'static';
-    this.container.cursor = 'pointer';
+    this.container.eventMode = 'none';
 
     this.redraw();
   }
