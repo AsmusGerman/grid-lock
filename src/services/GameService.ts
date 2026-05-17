@@ -9,6 +9,8 @@ import { CELL_SIZE, THEME, gridToPixel } from '../rendering/theme';
 import type { GridCoord, INode, MoveDescriptor, MoveLogEntry } from '../nexus/types';
 import { GAME_ERROR_EVENT, GAME_STATE_EVENT, type GameStateDetail } from '../nexus/events';
 
+const INTERACTION_TARGET_ALPHA = 0.001;
+
 /**
  * Orchestrates the full game loop:
  * validate → apply → reclassify → re-render → score → advance turn.
@@ -19,6 +21,7 @@ export class GameService {
   private readonly connectionLayer: Container;
   private readonly nodeLayer: Container;
   private readonly previewLayer: Container;
+  private readonly interactionLayer: Container;
 
   private readonly session: GameSession;
   private readonly nodeRenderers: Map<string, NodeRenderer> = new Map();
@@ -38,6 +41,7 @@ export class GameService {
     this.connectionLayer = new Container();
     this.nodeLayer = new Container();
     this.previewLayer = new Container();
+    this.interactionLayer = new Container();
 
     this.hoverRenderer = new HoverRenderer();
     this.previewLayer.addChild(this.hoverRenderer.container);
@@ -60,11 +64,9 @@ export class GameService {
       const nr = new NodeRenderer(node);
       this.nodeRenderers.set(this.coordKey(node.coord), nr);
       this.nodeLayer.addChild(nr.container);
-
-      nr.container.on('pointerover', () => this.onNodeHover(node));
-      nr.container.on('pointerout', () => this.onNodeHoverOut(node));
-      nr.container.on('pointertap', (event) => this.onNodeClick(node, event.detail ?? 1));
     }
+
+    this.buildInteractionTargets();
   }
 
   // ─── Callbacks ───────────────────────────────────────────────────────────────
@@ -93,6 +95,7 @@ export class GameService {
     this.app.stage.addChild(this.connectionLayer);
     this.app.stage.addChild(this.previewLayer);
     this.app.stage.addChild(this.nodeLayer);
+    this.app.stage.addChild(this.interactionLayer);
 
     this.resizeObserver = new ResizeObserver(() => this.updateCanvasScale());
     this.resizeObserver.observe(container);
@@ -399,6 +402,32 @@ export class GameService {
         .setFillStyle({ color, alpha })
         .rect(x - half, y - half, tile, tile)
         .fill();
+    }
+  }
+
+  private buildInteractionTargets(): void {
+    while (this.interactionLayer.children.length > 0) {
+      const child = this.interactionLayer.removeChildAt(this.interactionLayer.children.length - 1);
+      child.destroy();
+    }
+    const halfCell = CELL_SIZE / 2;
+
+    for (const node of this.session.board.allNodes()) {
+      const target = new Graphics();
+      const { x, y } = gridToPixel(node.coord.col, node.coord.row);
+
+      target
+        .setFillStyle({ color: 0x000000, alpha: INTERACTION_TARGET_ALPHA })
+        .rect(x - halfCell, y - halfCell, CELL_SIZE, CELL_SIZE)
+        .fill();
+
+      target.eventMode = 'static';
+      target.cursor = 'pointer';
+      target.on('pointerover', () => this.onNodeHover(node));
+      target.on('pointerout', () => this.onNodeHoverOut(node));
+      target.on('pointertap', (event) => this.onNodeClick(node, event.detail ?? 1));
+
+      this.interactionLayer.addChild(target);
     }
   }
 
