@@ -9,6 +9,8 @@ import { CELL_SIZE, THEME, gridToPixel } from '../rendering/theme';
 import type { GridCoord, INode, MoveDescriptor, MoveLogEntry } from '../nexus/types';
 import { GAME_ERROR_EVENT, GAME_STATE_EVENT, type GameStateDetail } from '../nexus/events';
 
+const INTERACTION_TARGET_ALPHA = 0.001;
+
 /**
  * Orchestrates the full game loop:
  * validate → apply → reclassify → re-render → score → advance turn.
@@ -404,7 +406,10 @@ export class GameService {
   }
 
   private buildInteractionTargets(): void {
-    this.interactionLayer.removeChildren().forEach((child) => child.destroy());
+    while (this.interactionLayer.children.length > 0) {
+      const child = this.interactionLayer.removeChildAt(this.interactionLayer.children.length - 1);
+      child.destroy();
+    }
     const halfCell = CELL_SIZE / 2;
 
     for (const node of this.session.board.allNodes()) {
@@ -412,7 +417,7 @@ export class GameService {
       const { x, y } = gridToPixel(node.coord.col, node.coord.row);
 
       target
-        .setFillStyle({ color: 0x000000, alpha: 0.001 })
+        .setFillStyle({ color: 0x000000, alpha: INTERACTION_TARGET_ALPHA })
         .rect(x - halfCell, y - halfCell, CELL_SIZE, CELL_SIZE)
         .fill();
 

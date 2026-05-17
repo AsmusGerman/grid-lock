@@ -10,7 +10,7 @@ export function HintToast(props: HintToastProps) {
       aria-live="polite"
       aria-hidden={!props.message}
     >
-      {props.message ?? ''}
+      {props.message ? props.message : null}
     </div>
   );
 }

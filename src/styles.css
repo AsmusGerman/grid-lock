@@ -49,6 +49,7 @@
   --mobile-ui-offset: 300px;
   --hint-scroll-size: min(58vh, 520px);
   --hint-scroll-size-dynamic: min(58dvh, 520px);
+  --hint-toast-opacity: 0.94;
 }
 
 *, *::before, *::after {
@@ -549,7 +550,7 @@ body {
 .hint-toast {
   width: 100%;
   min-height: 40px;
-  background: rgba(61, 64, 91, 0.94);
+  background: rgba(61, 64, 91, var(--hint-toast-opacity));
   color: var(--eggshell);
   display: flex;
   align-items: center;
@@ -564,7 +565,7 @@ body {
 }
 
 .hint-toast.is-visible {
-  opacity: 0.94;
+  opacity: var(--hint-toast-opacity);
   transform: translateY(0);
 }
 
