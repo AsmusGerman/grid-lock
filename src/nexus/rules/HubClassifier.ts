@@ -33,8 +33,8 @@ export function classifyNode(node: INode): NodeType {
  */
 export function nodeTypeScore(type: NodeType): number {
   switch (type) {
-    case NodeType.Source:  return 0;
-    case NodeType.DeadEnd: return 1;
+    case NodeType.Source:  return 1;
+    case NodeType.DeadEnd: return 2;
     case NodeType.Fork:    return 3;
     case NodeType.Join:    return 3;
     case NodeType.Reactor: return 5;

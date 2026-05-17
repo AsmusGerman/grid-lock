@@ -24,6 +24,10 @@ export class GameService {
   private readonly nodeRenderers: Map<string, NodeRenderer> = new Map();
   private readonly hoverRenderer: HoverRenderer;
   private app: Application | null = null;
+  private containerEl: HTMLElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private baseCanvasWidth = 0;
+  private baseCanvasHeight = 0;
 
   private selectedCoord: GridCoord | null = null;
 
@@ -69,6 +73,9 @@ export class GameService {
   async mount(container: HTMLElement): Promise<void> {
     const { cols, rows } = this.session.board;
     const { width, height } = BoardRenderer.canvasSize(cols, rows);
+    this.baseCanvasWidth = width;
+    this.baseCanvasHeight = height;
+    this.containerEl = container;
 
     this.app = new Application();
     await this.app.init({
@@ -87,13 +94,42 @@ export class GameService {
     this.app.stage.addChild(this.previewLayer);
     this.app.stage.addChild(this.nodeLayer);
 
+    this.resizeObserver = new ResizeObserver(() => this.updateCanvasScale());
+    this.resizeObserver.observe(container);
+    window.addEventListener('resize', this.updateCanvasScale);
+    this.updateCanvasScale();
+
     this.dispatchState();
   }
 
   destroy(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    window.removeEventListener('resize', this.updateCanvasScale);
+    this.containerEl = null;
     this.app?.destroy(true);
     this.app = null;
   }
+
+  private updateCanvasScale = (): void => {
+    if (!this.app || !this.containerEl || this.baseCanvasWidth === 0 || this.baseCanvasHeight === 0) {
+      return;
+    }
+
+    const availableWidth = this.containerEl.clientWidth;
+    const availableHeight = this.containerEl.clientHeight;
+    if (availableWidth <= 0 || availableHeight <= 0) return;
+
+    const scale = Math.min(
+      availableWidth / this.baseCanvasWidth,
+      availableHeight / this.baseCanvasHeight,
+    );
+
+    const canvasWidth = Math.floor(this.baseCanvasWidth * scale);
+    const canvasHeight = Math.floor(this.baseCanvasHeight * scale);
+    this.app.canvas.style.width = `${canvasWidth}px`;
+    this.app.canvas.style.height = `${canvasHeight}px`;
+  };
 
   // ─── Public actions ───────────────────────────────────────────────────────────
 

@@ -76,8 +76,8 @@ export class GameSession {
     this.config = config;
     this.board = new Board(config.cols, config.rows);
     this.players = {
-      P1: new Player('P1', 'Player 1', 0x2D6A9F),
-      P2: new Player('P2', 'Player 2', 0xC0392B),
+      P1: new Player('P1', 'Player 1', 0x81B29A),
+      P2: new Player('P2', 'Player 2', 0xE07A5F),
     };
   }
 

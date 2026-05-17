@@ -26,8 +26,8 @@ export const THEME = {
   arrowHeadSize: 10,
 
   // Players
-  P1: 0x2D6A9F,
-  P2: 0xC0392B,
+  P1: 0x81B29A,
+  P2: 0xE07A5F,
 
   // Preview
   previewAlpha: 0.35,

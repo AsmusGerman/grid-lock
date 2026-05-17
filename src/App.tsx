@@ -5,13 +5,17 @@ import { GameSession } from './nexus/session/GameSession';
 import { GameService } from './services/GameService';
 import type { GameStateDetail } from './nexus/events';
 import { GAME_ERROR_EVENT, GAME_STATE_EVENT } from './nexus/events';
-import { ErrorToast } from './ui/ErrorToast';
+import { uiText } from './content/uiText';
 import { HintPanel } from './ui/HintPanel';
-import { ScorePanel } from './ui/ScorePanel';
-import { TurnControls } from './ui/TurnControls';
-import { TurnIndicator } from './ui/TurnIndicator';
-
-type BoardSize = 5 | 7 | 9;
+import { HintToast } from './ui/HintToast';
+import { AppHeader } from './ui/app/AppHeader';
+import { BoardSection } from './ui/app/BoardSection';
+import { BottomBar } from './ui/app/BottomBar';
+import { InfoColumn } from './ui/app/InfoColumn';
+import { MoveLogModal } from './ui/app/MoveLogModal';
+import { MoveLogPanel } from './ui/app/MoveLogPanel';
+import { NewGameModal } from './ui/app/NewGameModal';
+import type { BoardSize } from './ui/app/types';
 
 const DEFAULT_BOARD_SIZE: BoardSize = 7;
 const MAX_TURNS_BY_SIZE: Record<BoardSize, number> = {
@@ -19,6 +23,7 @@ const MAX_TURNS_BY_SIZE: Record<BoardSize, number> = {
   7: 40,
   9: 60,
 };
+const TOAST_MS = 4200;
 
 interface AppState extends GameStateDetail {
   errorMessage: string | null;
@@ -43,19 +48,38 @@ const initialState: AppState = {
 function boardMessage(state: AppState): string {
   if (state.errorMessage) return state.errorMessage;
   if (state.phases[state.currentPlayer] === 'Placement') {
-    return 'Placement: P1 must start in top-left zone and P2 in bottom-right zone. Middle diagonal is forbidden.';
+    return uiText.boardMessages.placement;
   }
-  return 'Double-click your own straight dead-end leaf to convert it into X and retract that leaf path.';
+  return uiText.boardMessages.default;
+}
+
+function boardMessageFromDetail(detail: GameStateDetail): string {
+  if (detail.phases[detail.currentPlayer] === 'Placement') {
+    return uiText.boardMessages.placement;
+  }
+  return uiText.boardMessages.default;
 }
 
 export function App() {
   const [state, setState] = createStore<AppState>({ ...initialState });
   const [nextBoardSize, setNextBoardSize] = createSignal<BoardSize>(DEFAULT_BOARD_SIZE);
   const [showNewGameModal, setShowNewGameModal] = createSignal(false);
+  const [showHistoryModal, setShowHistoryModal] = createSignal(false);
   const [showHintModal, setShowHintModal] = createSignal(false);
+  const [hintToastMessage, setHintToastMessage] = createSignal<string | null>(null);
   let boardRef!: HTMLDivElement;
   let hintTriggerRef!: HTMLButtonElement;
   let gameService: GameService | null = null;
+  let toastTimer: number | undefined;
+
+  function showHintToast(message: string): void {
+    setHintToastMessage(message);
+    if (toastTimer !== undefined) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => {
+      setHintToastMessage(null);
+      toastTimer = undefined;
+    }, TOAST_MS);
+  }
 
   async function startNewGame(size: BoardSize = nextBoardSize()) {
     const maxTurns = MAX_TURNS_BY_SIZE[size];
@@ -78,6 +102,14 @@ export function App() {
     setShowHintModal(true);
   }
 
+  function openHistoryModal(): void {
+    setShowHistoryModal(true);
+  }
+
+  function closeHistoryModal(): void {
+    setShowHistoryModal(false);
+  }
+
   function closeHintModal(): void {
     setShowHintModal(false);
   }
@@ -87,7 +119,20 @@ export function App() {
     setShowNewGameModal(false);
   }
 
-  onMount(async () => {
+  onMount(() => {
+    const onState = (e: CustomEvent<GameStateDetail>) => {
+      setState({ ...e.detail, errorMessage: null });
+      showHintToast(boardMessageFromDetail(e.detail));
+    };
+
+    const onError = (e: CustomEvent<string>) => {
+      setState('errorMessage', e.detail);
+      showHintToast(e.detail);
+    };
+
+    window.addEventListener(GAME_STATE_EVENT, onState);
+    window.addEventListener(GAME_ERROR_EVENT, onError);
+
     const initialSize = nextBoardSize();
     const session = new GameSession({
       cols: initialSize,
@@ -95,104 +140,79 @@ export function App() {
       maxTurns: MAX_TURNS_BY_SIZE[initialSize],
     });
     gameService = new GameService(session);
-    await gameService.mount(boardRef);
-
-    const onState = (e: CustomEvent<GameStateDetail>) => {
-      setState({ ...e.detail, errorMessage: null });
-    };
-
-    const onError = (e: CustomEvent<string>) => {
-      setState('errorMessage', e.detail);
-    };
-
-    window.addEventListener(GAME_STATE_EVENT, onState);
-    window.addEventListener(GAME_ERROR_EVENT, onError);
+    void gameService.mount(boardRef);
+    showHintToast(uiText.boardMessages.placement);
 
     onCleanup(() => {
       window.removeEventListener(GAME_STATE_EVENT, onState);
       window.removeEventListener(GAME_ERROR_EVENT, onError);
       gameService?.destroy();
+      if (toastTimer !== undefined) {
+        window.clearTimeout(toastTimer);
+        toastTimer = undefined;
+      }
     });
   });
 
   return (
     <div id="app">
-      <header class="top-header">
-        <div class="top-header-main">
-          <TurnIndicator state={state} />
-          <ScorePanel
-            scores={state.scores}
-            phases={state.phases}
-            currentPlayer={state.currentPlayer}
-          />
-        </div>
-        <button
-          ref={hintTriggerRef}
-          type="button"
-          class="btn hint-trigger"
-          aria-label="Open game hints"
-          onClick={openHintModal}
-        >
-          <span aria-hidden="true">ⓘ</span>
-        </button>
-      </header>
+      <AppHeader
+        onNewGame={openNewGameModal}
+        onOpenHistory={openHistoryModal}
+        onOpenGuide={openHintModal}
+        setGuideTriggerRef={(el) => {
+          hintTriggerRef = el;
+        }}
+      />
 
-      <div id="board">
-        <ErrorToast message={boardMessage(state)} />
-        <div ref={boardRef} class="board-canvas-slot" />
+      <div class="hint-toast-slot">
+        <HintToast message={hintToastMessage() ?? boardMessage(state)} />
       </div>
 
-      <div id="panel">
-        <TurnControls
-          canUndo={state.canUndo}
-          canReady={state.canReady}
-          canSurrender={state.canSurrender}
-          onUndo={() => gameService?.undoLastMove()}
-          onReady={() => gameService?.finishTurn()}
-          onSurrender={() => gameService?.surrenderCurrentPlayer()}
-          onNewGame={openNewGameModal}
+      <div id="content">
+
+        <BoardSection
+          setBoardRef={(el) => {
+            boardRef = el;
+          }}
         />
 
-        <section class="card log-panel">
-          <h3>MOVES</h3>
-          <ul class="log-list">
-            {[...state.moveLog].reverse().map(entry => (
-              <li class={`log-entry ${entry.player.toLowerCase()}`}>
-                <span class="log-dot" />
-                <span class="log-text">{entry.label}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <InfoColumn
+          state={state}
+          onSurrender={() => gameService?.surrenderCurrentPlayer()}
+          onUndo={() => gameService?.undoLastMove()}
+          onConfirm={() => gameService?.finishTurn()}
+        />
+
+        <MoveLogPanel moveLog={state.moveLog} />
       </div>
+
+      <BottomBar
+        currentPlayer={state.currentPlayer}
+        canSurrender={state.canSurrender}
+        canUndo={state.canUndo}
+        canReady={state.canReady}
+        onSurrender={() => gameService?.surrenderCurrentPlayer()}
+        onUndo={() => gameService?.undoLastMove()}
+        onConfirm={() => gameService?.finishTurn()}
+      />
 
       <HintPanel isOpen={showHintModal()} onClose={closeHintModal} triggerEl={hintTriggerRef} />
 
-      {showNewGameModal() && (
-        <div class="modal-backdrop" role="presentation">
-          <div class="modal-card" role="dialog" aria-modal="true" aria-label="New game settings">
-            <h3>START NEW GAME</h3>
-            <p>Choose the board size for the next match.</p>
-            <div class="size-picker-row">
-              <label for="new-game-size">Grid</label>
-              <select
-                id="new-game-size"
-                value={String(nextBoardSize())}
-                onChange={(e) => setNextBoardSize(Number(e.currentTarget.value) as BoardSize)}
-              >
-                <option value="5">5 x 5</option>
-                <option value="7">7 x 7</option>
-                <option value="9">9 x 9</option>
-              </select>
-              <span>{`Turns: ${MAX_TURNS_BY_SIZE[nextBoardSize()]}`}</span>
-            </div>
-            <div class="modal-actions">
-              <button type="button" class="btn btn-light" onClick={cancelNewGame}>Cancel</button>
-              <button type="button" class="btn btn-primary" onClick={() => void confirmNewGame()}>Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MoveLogModal
+        isOpen={showHistoryModal()}
+        moveLog={state.moveLog}
+        onClose={closeHistoryModal}
+      />
+
+      <NewGameModal
+        isOpen={showNewGameModal()}
+        boardSize={nextBoardSize()}
+        maxTurns={MAX_TURNS_BY_SIZE[nextBoardSize()]}
+        onClose={cancelNewGame}
+        onConfirm={() => void confirmNewGame()}
+        onBoardSizeChange={setNextBoardSize}
+      />
     </div>
   );
 }

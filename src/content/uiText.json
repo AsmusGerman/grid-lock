@@ -1,0 +1,96 @@
+{
+  "app": {
+    "title": "GRIDLOCK",
+    "aria": {
+      "newGame": "New game",
+      "openHistory": "Open move history",
+      "openGuide": "Open game guide",
+      "newGameDialog": "New game settings",
+      "undo": "Undo last move",
+      "confirm": "Confirm turn",
+      "surrender": "Surrender"
+    }
+  },
+  "boardMessages": {
+    "placement": "Placement: P1 must start in top-left zone and P2 in bottom-right zone. Middle diagonal is forbidden.",
+    "default": "Double-click your own straight dead-end leaf to convert it into X and retract that leaf path."
+  },
+  "actions": {
+    "undo": "Undo",
+    "confirm": "Confirm",
+    "surrender": "Surrender",
+    "undoMobile": "UNDO",
+    "confirmMobile": "CONFIRM"
+  },
+  "scorePanel": {
+    "players": {
+      "p1": "P1",
+      "p2": "P2"
+    },
+    "phases": {
+      "placement": "PLACE",
+      "foundation": "FOUND",
+      "expansion": "EXPLORE"
+    }
+  },
+  "turnIndicator": {
+    "gameOver": {
+      "draw": "Game Over - Draw",
+      "p1": "Game Over - Player 1 wins",
+      "p2": "Game Over - Player 2 wins"
+    },
+    "placement": {
+      "p1": "P1 - Place your Source",
+      "p2": "P2 - Place your Source"
+    },
+    "turn": {
+      "p1": "P1 turn",
+      "p2": "P2 turn"
+    },
+    "meta": {
+      "current": "Current",
+      "turns": "Turns",
+      "playableNodes": "Playable nodes"
+    }
+  },
+  "moveLog": {
+    "title": "MOVES",
+    "dialogLabel": "Move history",
+    "close": "Close",
+    "empty": "No moves yet."
+  },
+  "newGameModal": {
+    "title": "START NEW GAME",
+    "description": "Choose the board size for the next match.",
+    "gridLabel": "Grid",
+    "turnsLabel": "Turns",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "sizes": {
+      "5": "5 x 5",
+      "7": "7 x 7",
+      "9": "9 x 9"
+    }
+  },
+  "hint": {
+    "title": "GRIDLOCK GUIDE",
+    "dialogLabel": "GridLock guide",
+    "close": "Close",
+    "items": [
+      "Stage 0 setup: P1 places Source in top-left zone and P2 in bottom-right zone.",
+      "The middle diagonal is neutral and forbidden for source placement by both players.",
+      "After setup, each turn allows one legal action followed by Ready.",
+      "Normal links are orthogonal distance 1 and are always available.",
+      "Diagonal links require both endpoints to already be owned and grant +1 bonus at origin.",
+      "Bridge links use distance 2 and affect the middle node according to source type.",
+      "Straight bridge can reverse an opposite direction between your own endpoints; the middle node is nullified to X.",
+      "No connection may cross an existing connection.",
+      "After your first move, every next move must connect to your existing circuit.",
+      "Double-click your own straight dead-end leaf to convert it to X and retract that leaf path.",
+      "Foundation advances to Expansion once you control at least 4 active nodes.",
+      "Balanced, relay, and trapped nodes cannot emit vectors and score 0 while inactive.",
+      "If a player has no legal move, they lose immediately.",
+      "If total turns are reached, highest score wins, then owned-node tiebreak applies."
+    ]
+  }
+}
