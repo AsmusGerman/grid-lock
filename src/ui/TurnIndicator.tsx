@@ -1,30 +1,13 @@
 import type { GameStateDetail } from '../nexus/events';
-import { uiText } from '../content/uiText';
-
-interface TurnIndicatorProps {
-  state: GameStateDetail;
-}
-
-function turnClass(state: GameStateDetail): string {
-  if (state.winner) return 'turn-banner over';
-  return state.currentPlayer === 'P1' ? 'turn-banner p1' : 'turn-banner p2';
-}
-
-function activeTag(state: GameStateDetail): string {
-  if (state.winner === 'P1') return 'P1';
-  if (state.winner === 'P2') return 'P2';
-  if (state.winner === 'draw') return 'DRAW';
-  return state.currentPlayer;
-}
-
-export function TurnIndicator(props: TurnIndicatorProps) {
+interface Props { state: GameStateDetail }
+export function TurnIndicator(props: Props) {
+  const title = () => props.state.winner === 'draw' ? 'Draw' : props.state.winner ? `${props.state.winner} wins` : `${props.state.currentPlayer} to act`;
+  const subtitle = () => props.state.isGameOver ? (props.state.endReason ?? 'Game over').replace(/-/g, ' ') : props.state.bridgeMode ? 'Bridge mode — choose a powered source' : props.state.selectedSource ? 'Choose a highlighted destination' : 'Choose a powered source';
   return (
-    <section class={turnClass(props.state)}>
-      <div class="turn-banner-meta">
-        <span>{`${uiText.turnIndicator.meta.current}: ${activeTag(props.state)}`}</span>
-        <span>{`${uiText.turnIndicator.meta.turns}: ${props.state.turnCount} / ${props.state.maxTurns}`}</span>
-        <span>{`${uiText.turnIndicator.meta.playableNodes}: ${props.state.actionableNodes}`}</span>
-      </div>
+    <section class={`turn-banner ${props.state.isGameOver ? 'over' : props.state.currentPlayer.toLowerCase()}`} aria-live="polite">
+      <strong>{title()}</strong>
+      <span>{subtitle()}</span>
+      <span>{props.state.actionCount} / {props.state.maxActions} actions</span>
     </section>
   );
 }

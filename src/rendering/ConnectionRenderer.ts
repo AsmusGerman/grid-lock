@@ -3,80 +3,34 @@ import { ConnectionType } from '../nexus/types';
 import { THEME, gridToPixel } from './theme';
 import type { IConnection } from '../nexus/types';
 
-/**
- * Renders a single directed connection as a line + arrowhead.
- * Bridge connections are drawn as a bold solid line.
- * All geometry is drawn in local space on a Graphics object.
- */
 export class ConnectionRenderer {
-  readonly gfx: Graphics;
-
-  constructor(private readonly connection: IConnection, alpha = 1) {
-    this.gfx = new Graphics();
-    this.gfx.alpha = alpha;
-    this.draw();
-  }
-
+  readonly gfx = new Graphics();
+  constructor(private readonly connection: IConnection, alpha = 1) { this.gfx.alpha = alpha; this.draw(); }
   private draw(): void {
-    const { from, to, type, player } = this.connection;
-    const a = gridToPixel(from.col, from.row);
-    const b = gridToPixel(to.col, to.row);
-    const color = (THEME as unknown as Record<string, number>)[player];
-
-    const width = (type === ConnectionType.Bridge || type === ConnectionType.DiagonalBridge)
-      ? THEME.connectionBridgeWidth
-      : (type === ConnectionType.Diagonal ? 2 : THEME.connectionNormalWidth);
-    this.drawSolidLine(a, b, color, width);
-
-    this.drawArrowHead(a, b, color);
-  }
-
-  private drawSolidLine(
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    color: number,
-    width: number,
-  ): void {
-    const { x: ax, y: ay } = a;
-    const { x: bx, y: by } = b;
-    const dx = bx - ax;
-    const dy = by - ay;
-    const len = Math.hypot(dx, dy);
-
-    // Shorten the line so it doesn't overlap the node circles
-    const shrink = 8;
-    const ratio = (len - shrink) / len;
-
-    this.gfx.setStrokeStyle({ width, color });
-    this.gfx
-      .moveTo(ax + (dx * (1 - ratio)) / 2, ay + (dy * (1 - ratio)) / 2)
-      .lineTo(ax + dx * ratio + (dx * (1 - ratio)) / 2, ay + dy * ratio + (dy * (1 - ratio)) / 2)
-      .stroke();
-  }
-
-  private drawArrowHead(
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    color: number,
-  ): void {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy);
-    const ux = dx / len;
-    const uy = dy / len;
-
-    // Arrow tip is slightly before the destination node edge
-    const tipOffset = 14;
-    const tipX = b.x - ux * tipOffset;
-    const tipY = b.y - uy * tipOffset;
-
-    const s = THEME.arrowHeadSize;
-    const lx = tipX - ux * s - uy * (s * 0.5);
-    const ly = tipY - uy * s + ux * (s * 0.5);
-    const rx = tipX - ux * s + uy * (s * 0.5);
-    const ry = tipY - uy * s - ux * (s * 0.5);
-
-    this.gfx.setFillStyle({ color });
-    this.gfx.moveTo(tipX, tipY).lineTo(lx, ly).lineTo(rx, ry).closePath().fill();
+    const a = gridToPixel(this.connection.from.col, this.connection.from.row);
+    const b = gridToPixel(this.connection.to.col, this.connection.to.row);
+    const color = THEME[this.connection.player];
+    const dx = b.x - a.x; const dy = b.y - a.y; const length = Math.hypot(dx, dy);
+    const ux = dx / length; const uy = dy / length;
+    // Always offset to the arrow's local right. A reverse arrow therefore lands
+    // on the opposite side of the same grid segment instead of overlapping it.
+    const offset = 3.5;
+    const sx = a.x - uy * offset + ux * 15; const sy = a.y + ux * offset + uy * 15;
+    const ex = b.x - uy * offset - ux * 17; const ey = b.y + ux * offset - uy * 17;
+    if (this.connection.type === ConnectionType.Bridge) {
+      const segments = 9;
+      for (let i = 0; i < segments; i += 2) {
+        const t1 = i / segments; const t2 = Math.min((i + 1) / segments, 1);
+        this.gfx.setStrokeStyle({ width: 5, color });
+        this.gfx.moveTo(sx + (ex - sx) * t1, sy + (ey - sy) * t1).lineTo(sx + (ex - sx) * t2, sy + (ey - sy) * t2).stroke();
+      }
+    } else {
+      this.gfx.setStrokeStyle({ width: THEME.connectionNormalWidth, color });
+      this.gfx.moveTo(sx, sy).lineTo(ex, ey).stroke();
+    }
+    const size = THEME.arrowHeadSize;
+    const lx = ex - ux * size - uy * size * 0.55; const ly = ey - uy * size + ux * size * 0.55;
+    const rx = ex - ux * size + uy * size * 0.55; const ry = ey - uy * size - ux * size * 0.55;
+    this.gfx.setFillStyle({ color }); this.gfx.moveTo(ex, ey).lineTo(lx, ly).lineTo(rx, ry).closePath().fill();
   }
 }

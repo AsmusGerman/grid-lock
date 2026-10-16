@@ -12,17 +12,11 @@ export const THEME = {
   // Nodes
   nodeEmpty: 0xB0ADA5,
   nodeEmptyRadius: 5,
-  nodeHubRadius: 12,
-  nodeHubBorder: 0x222220,
-  nodeHubBorderWidth: 2,
   nodeSelectedRing: 0xF0A500,
   nodeSelectedRingWidth: 3,
-  nodeHoverRing: 0xB0ADA5,
-  nodeHoverRingAlpha: 0.5,
 
   // Connections
   connectionNormalWidth: 2.5,
-  connectionBridgeWidth: 5,
   arrowHeadSize: 10,
 
   // Players
