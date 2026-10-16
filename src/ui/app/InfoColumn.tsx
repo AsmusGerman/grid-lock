@@ -1,58 +1,17 @@
 import type { GameStateDetail } from '../../nexus/events';
-import { uiText } from '../../content/uiText';
 import { ScorePanel } from '../ScorePanel';
 import { TurnIndicator } from '../TurnIndicator';
-
-interface InfoColumnProps {
-  state: GameStateDetail;
-  onSurrender: () => void;
-  onUndo: () => void;
-  onConfirm: () => void;
-}
-
-export function InfoColumn(props: InfoColumnProps) {
-  const confirmClass = () =>
-    props.state.currentPlayer === 'P2' ? 'btn btn-danger icon-btn' : 'btn btn-primary icon-btn';
-
+interface Props { state: GameStateDetail; onSurrender: () => void; onUndo: () => void; onBridge: () => void }
+export function InfoColumn(props: Props) {
+  const noBridge = () => props.state.bridgeCharges[props.state.currentPlayer] <= 0 || props.state.isGameOver;
   return (
     <div id="info-col">
       <TurnIndicator state={props.state} />
-      <ScorePanel
-        scores={props.state.scores}
-        phases={props.state.phases}
-        currentPlayer={props.state.currentPlayer}
-      />
+      <ScorePanel state={props.state} />
       <div class="primary-actions">
-        <button
-          type="button"
-          class="btn btn-outline icon-btn"
-          aria-label={uiText.app.aria.undo}
-          disabled={!props.state.canUndo}
-          onClick={props.onUndo}
-        >
-          <span class="icon" aria-hidden="true">↶</span>
-          <span class="label">{uiText.actions.undo}</span>
-        </button>
-        <button
-          type="button"
-          class="btn btn-surrender icon-btn"
-          aria-label={uiText.app.aria.surrender}
-          disabled={!props.state.canSurrender}
-          onClick={props.onSurrender}
-        >
-          <span class="icon" aria-hidden="true">×</span>
-          <span class="label">{uiText.actions.surrender}</span>
-        </button>
-        <button
-          type="button"
-          class={confirmClass()}
-          aria-label={uiText.app.aria.confirm}
-          disabled={!props.state.canReady}
-          onClick={props.onConfirm}
-        >
-          <span class="icon" aria-hidden="true">✓</span>
-          <span class="label">{uiText.actions.confirm}</span>
-        </button>
+        <button type="button" class="btn btn-outline icon-btn" disabled={!props.state.canUndo} onClick={props.onUndo}><span class="icon">↶</span><span class="label">Undo</span></button>
+        <button type="button" class={`btn icon-btn ${props.state.bridgeMode ? 'btn-bridge-active' : 'btn-outline'}`} disabled={noBridge()} onClick={props.onBridge}><span class="icon">⌁</span><span class="label">Bridge</span></button>
+        <button type="button" class="btn btn-surrender icon-btn" disabled={!props.state.canSurrender} onClick={props.onSurrender}><span class="icon">×</span><span class="label">Surrender</span></button>
       </div>
     </div>
   );

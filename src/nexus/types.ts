@@ -1,113 +1,40 @@
-// ─── Player IDs ───────────────────────────────────────────────────────────────
-
 export type PlayerID = 'P1' | 'P2';
+export type Winner = PlayerID | 'draw';
+export interface GridCoord { col: number; row: number }
 
-// ─── Game phases ─────────────────────────────────────────────────────────────
+export enum NodeState { Empty = 'Empty', Active = 'Active', Dormant = 'Dormant', Locked = 'Locked', Core = 'Core' }
+export enum ConnectionType { Normal = 'Normal', Bridge = 'Bridge' }
+export type ActionType = 'Expand' | 'Reinforce' | 'Attack' | 'Bridge' | 'Breach';
+export type EndReason = 'core-breach' | 'no-legal-action' | 'turn-limit' | 'surrender';
 
-/** Placement: source not yet placed. Foundation: < 4 owned nodes. Expansion: ≥ 4 owned nodes. Per-player. */
-export type GamePhase = 'Placement' | 'Foundation' | 'Expansion';
-
-// ─── Connection types ─────────────────────────────────────────────────────────
-
-export enum ConnectionType {
-  Normal = 'Normal',
-  Diagonal = 'Diagonal',
-  Bridge = 'Bridge',
-  DiagonalBridge = 'DiagonalBridge',
-}
-
-// ─── Node classification ──────────────────────────────────────────────────────
-
-export enum NodeType {
-  Empty = 'Empty',       // 0 in / 0 out
-  Source = 'Source',     // 0 in / ≥1 out
-  DeadEnd = 'DeadEnd',   // ≥1 in / 0 out
-  Relay = 'Relay',       // 1 in / 1 out
-  Fork = 'Fork',         // 1 in / ≥2 out
-  Join = 'Join',         // ≥2 in / 1 out
-  Reactor = 'Reactor',   // ≥2 in / ≥2 out
-}
-
-// ─── Cardinal direction ───────────────────────────────────────────────────────
-
-/** 8-directional compass used for consecutive-move tracking. */
-export type Direction =
-  | 'N' | 'NE' | 'E' | 'SE'
-  | 'S' | 'SW' | 'W' | 'NW';
-
-// ─── Grid coordinate ──────────────────────────────────────────────────────────
-
-export interface GridCoord {
-  col: number; // 0-based column index
-  row: number; // 0-based row index
-}
-
-// ─── Interfaces ───────────────────────────────────────────────────────────────
-
-export interface IPlayer {
-  id: PlayerID;
-  name: string;
-  color: number; // hex colour for PixiJS
-}
-
-export interface IConnection {
-  id: string;
-  from: GridCoord;
-  to: GridCoord;
-  type: ConnectionType;
-  player: PlayerID;
-}
-
+export interface IPlayer { id: PlayerID; name: string; color: number }
+export interface IConnection { id: string; from: GridCoord; to: GridCoord; type: ConnectionType; player: PlayerID }
 export interface INode {
   coord: GridCoord;
-  type: NodeType;
+  state: NodeState;
   ownedBy: PlayerID | null;
-  isOpeningSource: boolean;
-  isOutBlocked: boolean;
-  isBalanced: boolean;
-  isTrapped: boolean;
-  /** Node lies under a length-2 vector and cannot be used as source or destination. */
-  isPassthrough: boolean;
-  /** Cumulative +1 bonus per Diagonal connection placed from this node. */
-  diagonalBonus: number;
+  isCore: boolean;
   inConnections: IConnection[];
   outConnections: IConnection[];
 }
-
-// ─── Move descriptor ──────────────────────────────────────────────────────────
-
-export interface MoveDescriptor {
-  from: GridCoord;
-  to: GridCoord;
-  connectionType: ConnectionType;
-  player: PlayerID;
-}
-
-// ─── Validation result ────────────────────────────────────────────────────────
-
-export interface ValidationResult {
-  valid: boolean;
-  reason?: string;
-}
-
-// ─── Events ───────────────────────────────────────────────────────────────────
-
-export interface MoveAppliedEvent {
+export interface MoveDescriptor { from: GridCoord; to: GridCoord; player: PlayerID; action?: ActionType }
+export interface ValidationResult { valid: boolean; reason?: string; action?: ActionType }
+export interface ActionResult {
+  action: ActionType;
   move: MoveDescriptor;
-  connection: IConnection;
-  affectedNodes: INode[];
-  scores: Record<PlayerID, number>;
+  connection?: IConnection;
+  locked?: GridCoord;
+  reactivated: GridCoord[];
+  disconnected: GridCoord[];
+  winner: Winner | null;
+}
+export interface MoveLogEntry { player: PlayerID; label: string }
+export interface SessionSnapshot {
   currentPlayer: PlayerID;
-}
-
-export interface GameOverEvent {
-  scores: Record<PlayerID, number>;
-  winner: PlayerID | 'draw';
-}
-
-// ─── Move log entry ───────────────────────────────────────────────────────────
-
-export interface MoveLogEntry {
-  player: PlayerID;
-  label: string;
+  actionCount: number;
+  actionsByPlayer: Record<PlayerID, number>;
+  bridgeCharges: Record<PlayerID, number>;
+  breachOrigins: Record<PlayerID, GridCoord[]>;
+  winner: Winner | null;
+  endReason: EndReason | null;
 }

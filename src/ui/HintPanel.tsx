@@ -1,4 +1,4 @@
-import { Show, createEffect, onCleanup } from 'solid-js';
+import { Show, createEffect, createSignal, onCleanup } from 'solid-js';
 import { uiText } from '../content/uiText';
 
 interface HintPanelProps {
@@ -9,9 +9,11 @@ interface HintPanelProps {
 
 export function HintPanel(props: HintPanelProps) {
   let modalRef!: HTMLElement;
+  const [step, setStep] = createSignal(0);
 
   createEffect(() => {
     if (!props.isOpen) return;
+    setStep(0);
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') props.onClose();
@@ -51,10 +53,18 @@ export function HintPanel(props: HintPanelProps) {
               <span aria-hidden="true">X</span>
             </button>
           </div>
-          <div class="guide-scroll">
-            <ul>
-              {uiText.hint.items.map(item => <li>{item}</li>)}
-            </ul>
+          <div class="tutorial-progress" aria-label={`Tutorial step ${step() + 1} of ${uiText.hint.items.length}`}>
+            {uiText.hint.items.map((_, index) => <span class={index <= step() ? 'complete' : ''} />)}
+          </div>
+          <div class="tutorial-step" aria-live="polite">
+            <strong>{uiText.hint.items[step()]}</strong>
+            <div class="tutorial-demo" aria-hidden="true">
+              <span class="demo-core">CORE</span><span class="demo-arrow">→</span><span class="demo-node">{step() === 2 ? '×' : step() === 4 ? '⚡' : '●'}</span>
+            </div>
+          </div>
+          <div class="tutorial-actions">
+            <button type="button" class="btn btn-outline" disabled={step() === 0} onClick={() => setStep(value => value - 1)}>Back</button>
+            <button type="button" class="btn btn-primary" onClick={() => step() === uiText.hint.items.length - 1 ? props.onClose() : setStep(value => value + 1)}>{step() === uiText.hint.items.length - 1 ? 'Play' : 'Next'}</button>
           </div>
         </section>
       </div>

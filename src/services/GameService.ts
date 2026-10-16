@@ -1,434 +1,140 @@
 import { Application, Container, Graphics } from 'pixi.js';
-import { GameSession } from '../nexus/session/GameSession';
 import { Board } from '../nexus/board/Board';
+import { NodeState } from '../nexus/types';
 import { BoardRenderer } from '../rendering/BoardRenderer';
-import { NodeRenderer } from '../rendering/NodeRenderer';
 import { ConnectionRenderer } from '../rendering/ConnectionRenderer';
 import { HoverRenderer } from '../rendering/HoverRenderer';
+import { NodeRenderer } from '../rendering/NodeRenderer';
 import { CELL_SIZE, THEME, gridToPixel } from '../rendering/theme';
-import type { GridCoord, INode, MoveDescriptor, MoveLogEntry } from '../nexus/types';
 import { GAME_ERROR_EVENT, GAME_STATE_EVENT, type GameStateDetail } from '../nexus/events';
+import type { ActionType, GridCoord, INode, MoveDescriptor } from '../nexus/types';
+import type { GameSession } from '../nexus/session/GameSession';
 
-const INTERACTION_TARGET_ALPHA = 0.001;
-
-/**
- * Orchestrates the full game loop:
- * validate → apply → reclassify → re-render → score → advance turn.
- */
+const HIT_ALPHA = 0.001;
 export class GameService {
-  private readonly boardLayer: Container;
-  private readonly placementLayer: Graphics;
-  private readonly connectionLayer: Container;
-  private readonly nodeLayer: Container;
-  private readonly previewLayer: Container;
-  private readonly interactionLayer: Container;
-
-  private readonly session: GameSession;
-  private readonly nodeRenderers: Map<string, NodeRenderer> = new Map();
-  private readonly hoverRenderer: HoverRenderer;
+  private readonly boardLayer = new Container();
+  private readonly connectionLayer = new Container();
+  private readonly nodeLayer = new Container();
+  private readonly previewLayer = new Container();
+  private readonly interactionLayer = new Container();
+  private readonly hoverRenderer = new HoverRenderer();
+  private readonly nodeRenderers = new Map<string, NodeRenderer>();
   private app: Application | null = null;
   private containerEl: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private selectedCoord: GridCoord | null = null;
+  private bridgeMode = false;
   private baseCanvasWidth = 0;
   private baseCanvasHeight = 0;
 
-  private selectedCoord: GridCoord | null = null;
-
-  constructor(session: GameSession) {
-    this.session = session;
-    this.boardLayer = new Container();
-    this.placementLayer = new Graphics();
-    this.connectionLayer = new Container();
-    this.nodeLayer = new Container();
-    this.previewLayer = new Container();
-    this.interactionLayer = new Container();
-
-    this.hoverRenderer = new HoverRenderer();
+  constructor(private readonly session: GameSession) {
+    const board = new BoardRenderer(session.board.cols, session.board.rows);
+    this.boardLayer.addChild(board.displayObject);
     this.previewLayer.addChild(this.hoverRenderer.container);
-
-    this.buildBoard();
+    this.rebuildNodes();
   }
-
-  // ─── Initialisation ──────────────────────────────────────────────────────────
-
-  private buildBoard(): void {
-    const { cols, rows } = this.session.board;
-
-    // Static grid background
-    const boardRenderer = new BoardRenderer(cols, rows);
-    this.boardLayer.addChild(boardRenderer.displayObject);
-    this.boardLayer.addChild(this.placementLayer);
-
-    // Node renderers
-    for (const node of this.session.board.allNodes()) {
-      const nr = new NodeRenderer(node);
-      this.nodeRenderers.set(this.coordKey(node.coord), nr);
-      this.nodeLayer.addChild(nr.container);
-    }
-
-    this.buildInteractionTargets();
-  }
-
-  // ─── Callbacks ───────────────────────────────────────────────────────────────
-  // ─── Lifecycle ────────────────────────────────────────────────────────────────
-
   async mount(container: HTMLElement): Promise<void> {
-    const { cols, rows } = this.session.board;
-    const { width, height } = BoardRenderer.canvasSize(cols, rows);
-    this.baseCanvasWidth = width;
-    this.baseCanvasHeight = height;
-    this.containerEl = container;
-
+    const size = BoardRenderer.canvasSize(this.session.board.cols, this.session.board.rows);
+    this.baseCanvasWidth = size.width; this.baseCanvasHeight = size.height; this.containerEl = container;
     this.app = new Application();
-    await this.app.init({
-      width,
-      height,
-      background: THEME.background,
-      antialias: true,
-      resolution: window.devicePixelRatio ?? 1,
-      autoDensity: true,
-    });
-
-    container.appendChild(this.app.canvas);
-
-    this.app.stage.addChild(this.boardLayer);
-    this.app.stage.addChild(this.connectionLayer);
-    this.app.stage.addChild(this.previewLayer);
-    this.app.stage.addChild(this.nodeLayer);
-    this.app.stage.addChild(this.interactionLayer);
-
-    this.resizeObserver = new ResizeObserver(() => this.updateCanvasScale());
-    this.resizeObserver.observe(container);
-    window.addEventListener('resize', this.updateCanvasScale);
-    this.updateCanvasScale();
-
-    this.dispatchState();
+    await this.app.init({ ...size, background: THEME.background, antialias: true, resolution: window.devicePixelRatio || 1, autoDensity: true });
+    container.replaceChildren(this.app.canvas);
+    this.app.stage.addChild(this.boardLayer, this.connectionLayer, this.previewLayer, this.nodeLayer, this.interactionLayer);
+    this.resizeObserver = new ResizeObserver(this.updateCanvasScale); this.resizeObserver.observe(container);
+    window.addEventListener('resize', this.updateCanvasScale); this.updateCanvasScale(); this.redrawAll(); this.dispatchState();
   }
-
   destroy(): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    window.removeEventListener('resize', this.updateCanvasScale);
-    this.containerEl = null;
-    this.app?.destroy(true);
-    this.app = null;
+    this.resizeObserver?.disconnect(); window.removeEventListener('resize', this.updateCanvasScale);
+    this.app?.destroy(true); this.app = null; this.containerEl = null;
   }
-
-  private updateCanvasScale = (): void => {
-    if (!this.app || !this.containerEl || this.baseCanvasWidth === 0 || this.baseCanvasHeight === 0) {
-      return;
-    }
-
-    const availableWidth = this.containerEl.clientWidth;
-    const availableHeight = this.containerEl.clientHeight;
-    if (availableWidth <= 0 || availableHeight <= 0) return;
-
-    const scale = Math.min(
-      availableWidth / this.baseCanvasWidth,
-      availableHeight / this.baseCanvasHeight,
-    );
-
-    const canvasWidth = Math.floor(this.baseCanvasWidth * scale);
-    const canvasHeight = Math.floor(this.baseCanvasHeight * scale);
-    this.app.canvas.style.width = `${canvasWidth}px`;
-    this.app.canvas.style.height = `${canvasHeight}px`;
-  };
-
-  // ─── Public actions ───────────────────────────────────────────────────────────
-
-  finishTurn(): void {
-    const result = this.session.finishTurn();
-    if (!result) {
-      this.dispatchError('You must make exactly one move, then press Ready.');
-      this.dispatchState();
-      return;
-    }
-    this.hoverRenderer.clear();
-    if (this.selectedCoord) {
-      this.rendererFor(this.selectedCoord)?.setSelected(false);
-      this.selectedCoord = null;
-    }
-    this.dispatchState();
-  }
-
-  undoLastMove(): void {
-    const undone = this.session.undoLastMove();
-    if (!undone) {
-      this.dispatchError('No move available to undo.');
-      this.dispatchState();
-      return;
-    }
-
-    this.hoverRenderer.clear();
-    if (this.selectedCoord) {
-      this.rendererFor(this.selectedCoord)?.setSelected(false);
-      this.selectedCoord = null;
-    }
-
-    this.redrawConnectionsFromBoard();
-    for (const currentNode of this.session.board.allNodes()) {
-      this.rendererFor(currentNode.coord)?.redraw();
-    }
-
-    this.dispatchState();
-  }
-
-  surrenderCurrentPlayer(): void {
-    const surrendered = this.session.surrenderCurrentPlayer();
-    if (!surrendered) {
-      this.dispatchError('Cannot surrender after the game is over.');
-      this.dispatchState();
-      return;
-    }
-
-    this.hoverRenderer.clear();
-    if (this.selectedCoord) {
-      this.rendererFor(this.selectedCoord)?.setSelected(false);
-      this.selectedCoord = null;
-    }
-
-    this.dispatchState();
-  }
-
-  // ─── Interaction handlers ────────────────────────────────────────────────────
-
-  private onNodeHover(node: INode): void {
-    const nr = this.rendererFor(node.coord);
-    if (!nr) return;
-    nr.setHovered(true);
-
-    if (this.selectedCoord) {
-      this.hoverRenderer.showPreview(
-        this.selectedCoord,
-        node.coord,
-        this.session.currentPlayer,
-      );
-    }
-  }
-
-  private onNodeHoverOut(node: INode): void {
-    const nr = this.rendererFor(node.coord);
-    if (!nr) return;
-    nr.setHovered(false);
-    this.hoverRenderer.clear();
-  }
-
-  private onNodeClick(node: INode, tapCount = 1): void {
+  setBridgeMode(enabled: boolean): void {
     if (this.session.isGameOver) return;
+    if (enabled && this.session.getBridgeCharges()[this.session.currentPlayer] <= 0) { this.dispatchError('No Bridge charges remain.'); return; }
+    this.bridgeMode = enabled; this.clearSelection(); this.dispatchState();
+  }
+  toggleBridgeMode(): void { this.setBridgeMode(!this.bridgeMode); }
+  undoLastMove(): void {
+    if (!this.session.undoLastMove()) { this.dispatchError('No action available to undo.'); return; }
+    this.bridgeMode = false; this.clearSelection(); this.rebuildNodes(); this.redrawAll(); this.dispatchState();
+  }
+  surrenderCurrentPlayer(): void { if (this.session.surrenderCurrentPlayer()) this.dispatchState(); }
 
-    // ─── Placement phase: single-click to place source ───
-    if (this.session.isPlacementPhase) {
-      const result = this.session.placeSource(node.coord, this.session.currentPlayer);
-      if (!result.valid) {
-        this.dispatchError(result.reason ?? 'Invalid placement.');
-        return;
-      }
-      this.rendererFor(node.coord)?.redraw();
-      this.dispatchState();
-      return;
-    }
-
-    if (tapCount >= 2 && this.tryLeafTrap(node)) {
-      return;
-    }
-
-    // ─── Normal phases: two-click source → destination flow ───
-    if (!this.session.canPlayMove() && !this.selectedCoord) {
-      this.dispatchError('Move already played. Press Ready or Undo.');
-      return;
-    }
-
+  private onNodeClick(node: INode): void {
+    if (this.session.isGameOver) return;
     if (!this.selectedCoord) {
-      // First click: select source
-      this.selectedCoord = node.coord;
-      this.rendererFor(node.coord)?.setSelected(true);
-    } else {
-      // Second click: attempt move
-      const from = this.selectedCoord;
-      const to = node.coord;
-
-      // Deselect source
-      this.rendererFor(from)?.setSelected(false);
-      this.selectedCoord = null;
-      this.hoverRenderer.clear();
-
-      // If clicking same node again — deselect
-      if (from.col === to.col && from.row === to.row) return;
-
-      const connectionType = Board.inferConnectionType(from, to);
-
-      const move: MoveDescriptor = {
-        from,
-        to,
-        connectionType,
-        player: this.session.currentPlayer,
-      };
-
-      const validation = this.session.validateMove(move);
-      if (!validation.valid) {
-        this.dispatchError(validation.reason ?? 'Invalid move.');
-        return;
-      }
-
-      const event = this.session.applyMove(move);
-
-      // Add connection graphic
-      const connRenderer = new ConnectionRenderer(event.connection);
-      this.connectionLayer.addChild(connRenderer.gfx);
-
-      // Redraw all nodes: topology + outbound blocking may have changed globally.
-      for (const currentNode of this.session.board.allNodes()) {
-        this.rendererFor(currentNode.coord)?.redraw();
-      }
-
-      // Notify UI
-      this.dispatchState();
+      const active = node.ownedBy === this.session.currentPlayer && (node.state === NodeState.Active || node.state === NodeState.Core);
+      if (!active) { this.dispatchError('Select one of your powered nodes.'); return; }
+      const options = this.session.getLegalDestinations(node.coord, this.bridgeMode);
+      if (!options.length) { this.dispatchError(this.bridgeMode ? 'This node has no valid Bridge destination.' : 'This node has no legal action.'); return; }
+      this.selectedCoord = node.coord; this.updateHighlights(); this.dispatchState(); return;
     }
-  }
-
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-  private dispatchState(): void {
-    // Proactive auto-end: if the current player has no legal moves and the
-    // game hasn't been flagged as over yet, end it now. This catches edge
-    // cases not covered by the post-move / post-finishTurn checks (e.g.
-    // after undo or at mount time).
-    if (
-      !this.session.isGameOver &&
-      this.session.canPlayMove() &&
-      this.session.getAvailableActionSourceCount(this.session.currentPlayer) === 0
-    ) {
-      this.session.endByNoMoves();
-    }
-
-    this.redrawPlacementOverlay();
-
-    window.dispatchEvent(
-      new CustomEvent(GAME_STATE_EVENT, { detail: this.buildStateDetail() }),
-    );
-  }
-
-  private dispatchError(message: string): void {
-    window.dispatchEvent(new CustomEvent(GAME_ERROR_EVENT, { detail: message }));
-  }
-
-  private buildStateDetail(): GameStateDetail {
-    const scores = this.session.getScores();
-    const isPlacement = this.session.isPlacementPhase;
-    return {
-      currentPlayer: this.session.currentPlayer,
-      turnCount: this.session.turnCount,
-      maxTurns: this.session.config.maxTurns,
-      actionableNodes: isPlacement ? 0 : this.session.getActionableNodeCount(this.session.currentPlayer),
-      scores,
-      phases: this.session.getPhases(),
-      moveLog: this.formatMoveLog(),
-      canUndo: !isPlacement && this.session.canUndo(),
-      canReady: !isPlacement && this.session.canFinishTurn(),
-      canSurrender:
-        !isPlacement &&
-        !this.session.isGameOver &&
-        this.session.getPhase(this.session.currentPlayer) === 'Expansion',
-      winner: this.session.getWinner(),
-      isGameOver: this.session.isGameOver,
-    };
-  }
-
-  private formatMoveLog(): MoveLogEntry[] {
-    return this.session.getActionHistory();
-  }
-
-  private rendererFor(coord: GridCoord): NodeRenderer | undefined {
-    return this.nodeRenderers.get(this.coordKey(coord));
-  }
-
-  private coordKey(coord: GridCoord): string {
-    return `${coord.col},${coord.row}`;
-  }
-
-  private redrawConnectionsFromBoard(): void {
-    for (const child of [...this.connectionLayer.children]) {
-      this.connectionLayer.removeChild(child);
-      child.destroy();
-    }
-
-    for (const connection of this.session.board.getConnections()) {
-      const connRenderer = new ConnectionRenderer(connection);
-      this.connectionLayer.addChild(connRenderer.gfx);
-    }
-  }
-
-  private tryLeafTrap(node: INode): boolean {
-    const result = this.session.trapLeafNode(node.coord, this.session.currentPlayer);
-    if (!result.valid) {
-      this.dispatchError(result.reason ?? 'Leaf trap is not valid here.');
-      return false;
-    }
-
-    this.hoverRenderer.clear();
-    if (this.selectedCoord) {
-      this.rendererFor(this.selectedCoord)?.setSelected(false);
-      this.selectedCoord = null;
-    }
-
-    this.redrawConnectionsFromBoard();
-    for (const currentNode of this.session.board.allNodes()) {
-      this.rendererFor(currentNode.coord)?.redraw();
+    if (Board.sameCoord(this.selectedCoord, node.coord)) { this.clearSelection(); this.dispatchState(); return; }
+    const move: MoveDescriptor = { from: this.selectedCoord, to: node.coord, player: this.session.currentPlayer, action: this.bridgeMode ? 'Bridge' : undefined };
+    const attempt = this.session.tryApplyMove(move);
+    if (!attempt.validation.valid) { this.dispatchError(attempt.validation.reason ?? 'Invalid action.'); return; }
+    this.bridgeMode = false; this.clearSelection(); this.redrawAll();
+    if (attempt.result) {
+      this.rendererFor(attempt.result.move.to)?.pulse();
+      if (attempt.result.locked) this.rendererFor(attempt.result.locked)?.pulse();
+      for (const coord of [...attempt.result.disconnected, ...attempt.result.reactivated]) this.rendererFor(coord)?.pulse();
     }
     this.dispatchState();
-    return true;
   }
-
-  private redrawPlacementOverlay(): void {
-    this.placementLayer.clear();
-
-    if (!this.session.isPlacementPhase) return;
-
-    const diagonal = this.session.board.cols - 1;
-    const activeP1Zone = this.session.currentPlayer === 'P1';
-    const tile = CELL_SIZE * 0.86;
-    const half = tile / 2;
-
-    for (const node of this.session.board.allNodes()) {
-      const zone = node.coord.col + node.coord.row;
-      if (zone === diagonal) continue;
-
-      const p1Zone = zone < diagonal;
-      const color = p1Zone ? THEME.P1 : THEME.P2;
-      const alpha = p1Zone === activeP1Zone ? 0.22 : 0.1;
-      const { x, y } = gridToPixel(node.coord.col, node.coord.row);
-
-      this.placementLayer
-        .setFillStyle({ color, alpha })
-        .rect(x - half, y - half, tile, tile)
-        .fill();
-    }
+  private onHover(node: INode, hovered: boolean): void {
+    this.rendererFor(node.coord)?.setHovered(hovered);
+    if (!hovered) { this.hoverRenderer.clear(); return; }
+    if (this.selectedCoord && this.isHighlighted(node.coord)) this.hoverRenderer.showPreview(this.selectedCoord, node.coord, this.session.currentPlayer, this.bridgeMode);
   }
-
-  private buildInteractionTargets(): void {
-    while (this.interactionLayer.children.length > 0) {
-      const child = this.interactionLayer.removeChildAt(this.interactionLayer.children.length - 1);
-      child.destroy();
-    }
-    const halfCell = CELL_SIZE / 2;
-
+  private updateHighlights(): void {
+    for (const renderer of this.nodeRenderers.values()) renderer.setDestination(null);
+    if (!this.selectedCoord) return;
+    this.rendererFor(this.selectedCoord)?.setSelected(true);
+    for (const option of this.session.getLegalDestinations(this.selectedCoord, this.bridgeMode)) this.rendererFor(option.coord)?.setDestination(option.action as ActionType);
+  }
+  private isHighlighted(coord: GridCoord): boolean {
+    return !!this.selectedCoord && this.session.getLegalDestinations(this.selectedCoord, this.bridgeMode).some(option => Board.sameCoord(option.coord, coord));
+  }
+  private clearSelection(): void {
+    if (this.selectedCoord) this.rendererFor(this.selectedCoord)?.setSelected(false);
+    this.selectedCoord = null; this.hoverRenderer.clear();
+    for (const renderer of this.nodeRenderers.values()) renderer.setDestination(null);
+  }
+  private rebuildNodes(): void {
+    this.nodeLayer.removeChildren().forEach(child => child.destroy()); this.interactionLayer.removeChildren().forEach(child => child.destroy()); this.nodeRenderers.clear();
     for (const node of this.session.board.allNodes()) {
-      const target = new Graphics();
-      const { x, y } = gridToPixel(node.coord.col, node.coord.row);
-
-      target
-        .setFillStyle({ color: 0x000000, alpha: INTERACTION_TARGET_ALPHA })
-        .rect(x - halfCell, y - halfCell, CELL_SIZE, CELL_SIZE)
-        .fill();
-
-      target.eventMode = 'static';
-      target.cursor = 'pointer';
-      target.on('pointerover', () => this.onNodeHover(node));
-      target.on('pointerout', () => this.onNodeHoverOut(node));
-      target.on('pointertap', (event) => this.onNodeClick(node, event.detail ?? 1));
-
+      const renderer = new NodeRenderer(node); this.nodeRenderers.set(this.key(node.coord), renderer); this.nodeLayer.addChild(renderer.container);
+      const target = new Graphics(); const p = gridToPixel(node.coord.col, node.coord.row);
+      target.setFillStyle({ color: 0, alpha: HIT_ALPHA }).rect(p.x - CELL_SIZE / 2, p.y - CELL_SIZE / 2, CELL_SIZE, CELL_SIZE).fill();
+      target.eventMode = 'static'; target.cursor = 'pointer';
+      target.on('pointerover', () => this.onHover(node, true)); target.on('pointerout', () => this.onHover(node, false)); target.on('pointertap', () => this.onNodeClick(node));
       this.interactionLayer.addChild(target);
     }
   }
-
+  private redrawAll(): void {
+    this.connectionLayer.removeChildren().forEach(child => child.destroy());
+    for (const edge of this.session.board.getConnections()) {
+      const source = this.session.board.getNode(edge.from); const target = this.session.board.getNode(edge.to);
+      const alpha = source.state === NodeState.Dormant || target.state === NodeState.Dormant ? 0.25 : 1;
+      this.connectionLayer.addChild(new ConnectionRenderer(edge, alpha).gfx);
+    }
+    const breaches = this.session.getBreachOrigins();
+    for (const node of this.session.board.allNodes()) { const renderer = this.rendererFor(node.coord); renderer?.setBreaches(node.ownedBy ? breaches[node.ownedBy].length : 0); renderer?.redraw(); }
+  }
+  private buildState(): GameStateDetail {
+    const breachOrigins = this.session.getBreachOrigins();
+    return { currentPlayer: this.session.currentPlayer, actionCount: this.session.actionCount, maxActions: this.session.config.maxActions,
+      remainingActions: this.session.getRemainingActions(), bridgeCharges: this.session.getBridgeCharges(),
+      breaches: { P1: breachOrigins.P1.length, P2: breachOrigins.P2.length }, selectedSource: this.selectedCoord ? { ...this.selectedCoord } : null,
+      bridgeMode: this.bridgeMode, moveLog: this.session.getActionHistory(), canUndo: this.session.canUndo(), canSurrender: this.session.canSurrender(),
+      winner: this.session.getWinner(), endReason: this.session.endReason, isGameOver: this.session.isGameOver };
+  }
+  private dispatchState(): void { window.dispatchEvent(new CustomEvent(GAME_STATE_EVENT, { detail: this.buildState() })); }
+  private dispatchError(message: string): void { window.dispatchEvent(new CustomEvent(GAME_ERROR_EVENT, { detail: message })); }
+  private rendererFor(coord: GridCoord): NodeRenderer | undefined { return this.nodeRenderers.get(this.key(coord)); }
+  private key(coord: GridCoord): string { return `${coord.col},${coord.row}`; }
+  private updateCanvasScale = (): void => {
+    if (!this.app || !this.containerEl) return;
+    const scale = Math.min(this.containerEl.clientWidth / this.baseCanvasWidth, this.containerEl.clientHeight / this.baseCanvasHeight);
+    this.app.canvas.style.width = `${Math.floor(this.baseCanvasWidth * scale)}px`; this.app.canvas.style.height = `${Math.floor(this.baseCanvasHeight * scale)}px`;
+  };
 }
